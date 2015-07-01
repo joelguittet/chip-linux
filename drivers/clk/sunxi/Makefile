@@ -12,6 +12,7 @@ obj-y += clk-mod0.o
 obj-y += clk-simple-gates.o
 obj-y += clk-sun4i-display.o
 obj-y += clk-sun4i-pll3.o
+obj-y += clk-sun4i-tcon-ch0.o
 obj-y += clk-sun8i-mbus.o
 obj-y += clk-sun9i-core.o
 obj-y += clk-sun9i-mmc.o
