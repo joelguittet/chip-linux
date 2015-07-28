@@ -175,6 +175,29 @@ static int h27q_get_best_val(const u8 *buf, int size, int min_cnt)
 #define H27Q_RR_TABLE_SIZE		784
 #define H27Q_RR_TABLE_NSETS		8
 
+static void h27q_set_slc_mode(struct mtd_info *mtd)
+{
+	struct nand_chip *chip = mtd->priv;
+	u8 cmd = chip->slc_mode ? 0xbf : 0xbe;
+
+	chip->cmdfunc(mtd, cmd, -1, -1);
+}
+
+static void h27q_fix_page(struct mtd_info *mtd, int *page)
+{
+	struct nand_chip *chip = mtd->priv;
+	int blkmsk;
+	int tmp;
+
+	if (!chip->slc_mode)
+		return;
+
+	blkmsk = ((1 << (chip->phys_erase_shift - chip->page_shift)) - 1);
+	tmp = *page & (blkmsk >> 1);
+	tmp |= (*page << 1) & ~blkmsk;
+	*page = tmp;
+}
+
 static int h27q_init(struct mtd_info *mtd, const uint8_t *id)
 {
 	struct nand_chip *chip = mtd->priv;
@@ -273,6 +296,8 @@ static int h27q_init(struct mtd_info *mtd, const uint8_t *id)
 	chip->setup_read_retry = nand_setup_read_retry_hynix;
 	chip->read_retries = total_rr_count;
 	chip->manuf_cleanup = h27_cleanup;
+	chip->set_slc_mode = h27q_set_slc_mode;
+	chip->fix_page = h27q_fix_page;
 
 	return 0;
 
