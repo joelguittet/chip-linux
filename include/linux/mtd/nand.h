@@ -754,9 +754,12 @@ struct nand_chip {
 			int feature_addr, uint8_t *subfeature_para);
 	int (*setup_read_retry)(struct mtd_info *mtd, int retry_mode);
 	void (*manuf_cleanup)(struct mtd_info *mtd);
+	void (*set_slc_mode)(struct mtd_info *mtd);
+	void (*fix_page)(struct mtd_info *mtd, int *page);
 
 	void *manuf_priv;
 
+	bool slc_mode;
 	int chip_delay;
 	unsigned int options;
 	unsigned int bbt_options;
@@ -834,9 +837,11 @@ struct nand_part {
 	struct mtd_info mtd;
 	struct mtd_info *master;
 	uint64_t offset;
+	uint64_t size;
 	struct nand_ecc_ctrl *ecc;
 	struct nand_rnd_ctrl *rnd;
 	void (*release)(struct nand_part *part);
+	bool slc_mode;
 };
 
 static inline struct nand_part *to_nand_part(struct mtd_info *mtd)

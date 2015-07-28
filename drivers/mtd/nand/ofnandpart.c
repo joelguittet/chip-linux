@@ -76,10 +76,13 @@ int ofnandpart_parse(struct mtd_info *master,
 			continue;
 
 		part->offset = offset;
+		part->size = size;
 		part->master = master;
 		part->mtd.name = partname;
-		part->mtd.size = size;
 		part->mtd.flags = mask_flags;
+
+		if (of_property_read_bool(pp, "slc-mode"))
+			part->slc_mode = true;
 
 		if (nand_add_partition(master, part)) {
 			if (part->release)

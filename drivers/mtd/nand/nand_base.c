@@ -97,6 +97,22 @@ static int nand_get_device(struct mtd_info *mtd, int new_state);
 static int nand_do_write_oob(struct mtd_info *mtd, loff_t to,
 			     struct mtd_oob_ops *ops);
 
+static void nand_set_slc_mode(struct mtd_info *mtd, int chipnr, bool enable)
+{
+	struct nand_chip *chip = mtd->priv;
+
+	if (chip->slc_mode == enable)
+		return;
+
+	chip->slc_mode = enable;
+	chip->pagebuf = -1;
+	if (chip->set_slc_mode) {
+		chip->select_chip(mtd, chipnr);
+		chip->set_slc_mode(mtd);
+		chip->select_chip(mtd, -1);
+	}
+}
+
 /*
  * For devices which display every fart in the system on a separate LED. Is
  * compiled away when LED support is disabled.
@@ -107,16 +123,20 @@ static int check_offs_len(struct mtd_info *mtd,
 					loff_t ofs, uint64_t len)
 {
 	struct nand_chip *chip = mtd->priv;
+	int shift = chip->phys_erase_shift;
 	int ret = 0;
 
+	if (chip->slc_mode)
+		shift--;
+
 	/* Start address must align on block boundary */
-	if (ofs & ((1ULL << chip->phys_erase_shift) - 1)) {
+	if (ofs & ((1ULL << shift) - 1)) {
 		pr_debug("%s: unaligned address\n", __func__);
 		ret = -EINVAL;
 	}
 
 	/* Length must align on block boundary */
-	if (len & ((1ULL << chip->phys_erase_shift) - 1)) {
+	if (len & ((1ULL << shift) - 1)) {
 		pr_debug("%s: length not block aligned\n", __func__);
 		ret = -EINVAL;
 	}
@@ -517,6 +537,9 @@ static int nand_block_checkbad(struct mtd_info *mtd, loff_t ofs, int getchip,
 	if (!chip->bbt)
 		return chip->block_bad(mtd, ofs, getchip);
 
+	if (chip->slc_mode)
+		ofs *= 2;
+
 	/* Return info from the table */
 	return nand_isbad_bbt(mtd, ofs, allowbbt);
 }
@@ -724,6 +747,12 @@ static void nand_command_lp(struct mtd_info *mtd, unsigned int command,
 			chip->cmd_ctrl(mtd, column >> 8, ctrl);
 		}
 		if (page_addr != -1) {
+			if (chip->slc_mode && chip->fix_page &&
+			    (command == NAND_CMD_ERASE1 ||
+			     command == NAND_CMD_READ0 ||
+			     command == NAND_CMD_SEQIN))
+				chip->fix_page(mtd, &page_addr);
+
 			chip->cmd_ctrl(mtd, page_addr, ctrl);
 			chip->cmd_ctrl(mtd, page_addr >> 8,
 				       NAND_NCE | NAND_ALE);
@@ -1229,14 +1258,19 @@ EXPORT_SYMBOL(nand_page_is_empty);
 int nand_page_get_status(struct mtd_info *mtd, int page)
 {
 	struct nand_chip *chip = mtd->priv;
-	u8 shift = (page % 4) * 2;
-	uint64_t offset = page / 4;
-	int ret = NAND_PAGE_STATUS_UNKNOWN;
+	u8 shift;
+	uint64_t offset;
 
-	if (chip->pst)
-		ret = (chip->pst[offset] >> shift) & 0x3;
+	if (!chip->pst)
+		return NAND_PAGE_STATUS_UNKNOWN;
 
-	return ret;
+	if (chip->slc_mode)
+		page *= 2;
+
+	shift = (page % 4) * 2;
+	offset = page / 4;
+
+	return (chip->pst[offset] >> shift) & 0x3;
 }
 EXPORT_SYMBOL(nand_page_get_status);
 
@@ -1255,6 +1289,9 @@ void nand_page_set_status(struct mtd_info *mtd, int page,
 
 	if (!chip->pst)
 		return;
+
+	if (chip->slc_mode)
+		page *= 2;
 
 	shift = (page % 4) * 2;
 	offset = page / 4;
@@ -1279,7 +1316,7 @@ int nand_pst_create(struct mtd_info *mtd)
 		return 0;
 
 	chip->pst = kzalloc(mtd->size >>
-			    (chip->page_shift + mtd->subpage_sft + 2),
+			    (chip->page_shift - mtd->subpage_sft + 2),
 			    GFP_KERNEL);
 	if (!chip->pst)
 		return -ENOMEM;
@@ -2006,14 +2043,17 @@ static int nand_part_read(struct mtd_info *mtd, loff_t from, size_t len,
 	struct nand_chip *chip = mtd->priv;
 	struct nand_part *part = to_nand_part(mtd);
 	struct mtd_oob_ops ops;
+	int chipnr;
 	int ret;
 
-	from += part->offset;
+	from += part->slc_mode ? part->offset / 2 : part->offset;
 	nand_get_device(part->master, FL_READING);
 	if (part->ecc)
 		chip->cur_ecc = part->ecc;
 	if (part->rnd)
 		chip->cur_rnd = part->rnd;
+	chipnr = from >> (chip->chip_shift - (part->slc_mode ? 1 : 0));
+	nand_set_slc_mode(mtd, chipnr, part->slc_mode);
 	ops.len = len;
 	ops.datbuf = buf;
 	ops.oobbuf = NULL;
@@ -2333,6 +2373,7 @@ static int nand_part_read_oob(struct mtd_info *mtd, loff_t from,
 	struct nand_chip *chip = mtd->priv;
 	struct nand_part *part = to_nand_part(mtd);
 	int ret = -ENOTSUPP;
+	int chipnr;
 
 	ops->retlen = 0;
 
@@ -2343,12 +2384,14 @@ static int nand_part_read_oob(struct mtd_info *mtd, loff_t from,
 		return -EINVAL;
 	}
 
-	from += part->offset;
+	from += part->slc_mode ? part->offset / 2 : part->offset;
 	nand_get_device(part->master, FL_READING);
 	if (part->ecc)
 		chip->cur_ecc = part->ecc;
 	if (part->rnd)
 		chip->cur_rnd = part->rnd;
+	chipnr = from >> (chip->chip_shift - (part->slc_mode ? 1 : 0));
+	nand_set_slc_mode(mtd, chipnr, part->slc_mode);
 
 	switch (ops->mode) {
 	case MTD_OPS_PLACE_OOB:
@@ -2868,7 +2911,7 @@ static int nand_do_write_ops(struct mtd_info *mtd, loff_t to,
 		     subpage < (column + writelen) / chip->subpagesize;
 		     subpage++)
 			nand_page_set_status(mtd,
-					     (page << mtd->subpage_sft) +
+					     (realpage << mtd->subpage_sft) +
 					     subpage,
 					     NAND_PAGE_FILLED);
 
@@ -2950,9 +2993,9 @@ static int panic_nand_part_write(struct mtd_info *mtd, loff_t to, size_t len,
 	struct nand_chip *chip = mtd->priv;
 	struct nand_part *part = to_nand_part(mtd);
 	struct mtd_oob_ops ops;
-	int ret;
+	int ret, chipnr;
 
-	to += part->offset;
+	to += part->slc_mode ? part->offset / 2 : part->offset;
 	/* Wait for the device to get ready */
 	panic_nand_wait(part->master, chip, 400);
 
@@ -2962,6 +3005,8 @@ static int panic_nand_part_write(struct mtd_info *mtd, loff_t to, size_t len,
 		chip->cur_ecc = part->ecc;
 	if (part->rnd)
 		chip->cur_rnd = part->rnd;
+	chipnr = to >> (chip->chip_shift - (part->slc_mode ? 1 : 0));
+	nand_set_slc_mode(mtd, chipnr, part->slc_mode);
 
 	ops.len = len;
 	ops.datbuf = (uint8_t *)buf;
@@ -3019,14 +3064,16 @@ static int nand_part_write(struct mtd_info *mtd, loff_t to, size_t len,
 	struct nand_chip *chip = mtd->priv;
 	struct nand_part *part = to_nand_part(mtd);
 	struct mtd_oob_ops ops;
-	int ret;
+	int ret, chipnr;
 
-	to += part->offset;
+	to += part->slc_mode ? part->offset / 2 : part->offset;
 	nand_get_device(part->master, FL_WRITING);
 	if (part->ecc)
 		chip->cur_ecc = part->ecc;
 	if (part->rnd)
 		chip->cur_rnd = part->rnd;
+	chipnr = to >> (chip->chip_shift - (part->slc_mode ? 1 : 0));
+	nand_set_slc_mode(mtd, chipnr, part->slc_mode);
 	ops.len = len;
 	ops.datbuf = (uint8_t *)buf;
 	ops.oobbuf = NULL;
@@ -3180,7 +3227,7 @@ static int nand_part_write_oob(struct mtd_info *mtd, loff_t to,
 {
 	struct nand_chip *chip = mtd->priv;
 	struct nand_part *part = to_nand_part(mtd);
-	int ret = -ENOTSUPP;
+	int ret = -ENOTSUPP, chipnr;
 
 	ops->retlen = 0;
 
@@ -3191,12 +3238,14 @@ static int nand_part_write_oob(struct mtd_info *mtd, loff_t to,
 		return -EINVAL;
 	}
 
-	to += part->offset;
+	to += part->slc_mode ? part->offset / 2 : part->offset;
 	nand_get_device(part->master, FL_WRITING);
 	if (part->ecc)
 		chip->cur_ecc = part->ecc;
 	if (part->rnd)
 		chip->cur_rnd = part->rnd;
+	chipnr = to >> (chip->chip_shift - (part->slc_mode ? 1 : 0));
+	nand_set_slc_mode(mtd, chipnr, part->slc_mode);
 
 	switch (ops->mode) {
 	case MTD_OPS_PLACE_OOB:
@@ -3258,15 +3307,18 @@ static int nand_erase(struct mtd_info *mtd, struct erase_info *instr)
  */
 static int nand_part_erase(struct mtd_info *mtd, struct erase_info *instr)
 {
+	struct nand_chip *chip = mtd->priv;
 	struct nand_part *part = to_nand_part(mtd);
-	int ret;
+	int ret, chipnr;
 
-	instr->addr += part->offset;
+	instr->addr += part->slc_mode ? part->offset / 2 : part->offset;
+	chipnr = instr->addr >> (chip->chip_shift - (part->slc_mode ? 1 : 0));
+	nand_set_slc_mode(mtd, chipnr, part->slc_mode);
 	ret = nand_erase_nand(part->master, instr, 0);
 	if (ret) {
 		if (instr->fail_addr != MTD_FAIL_ADDR_UNKNOWN)
-			instr->fail_addr -= part->offset;
-		instr->addr -= part->offset;
+			instr->fail_addr -= part->slc_mode ? part->offset / 2 : part->offset;
+		instr->addr -= part->slc_mode ? part->offset / 2 : part->offset;
 	}
 
 	return ret;
@@ -3285,6 +3337,7 @@ int nand_erase_nand(struct mtd_info *mtd, struct erase_info *instr,
 {
 	int page, status, pages_per_block, ret, chipnr;
 	struct nand_chip *chip = mtd->priv;
+	uint32_t erasesize = mtd->erasesize;
 	loff_t len;
 	int i;
 
@@ -3304,6 +3357,11 @@ int nand_erase_nand(struct mtd_info *mtd, struct erase_info *instr,
 
 	/* Calculate pages in each block */
 	pages_per_block = 1 << (chip->phys_erase_shift - chip->page_shift);
+
+	if (chip->slc_mode) {
+		pages_per_block /= 2;
+		erasesize /= 2;
+	}
 
 	/* Select the NAND device */
 	chip->select_chip(mtd, chipnr);
@@ -3372,7 +3430,7 @@ int nand_erase_nand(struct mtd_info *mtd, struct erase_info *instr,
 		}
 
 		/* Increment page address and decrement length */
-		len -= (1ULL << chip->phys_erase_shift);
+		len -= erasesize;
 		page += pages_per_block;
 
 		/* Check, if we cross a chip boundary */
@@ -3434,8 +3492,12 @@ static int nand_block_isbad(struct mtd_info *mtd, loff_t offs)
 static int nand_part_block_isbad(struct mtd_info *mtd, loff_t offs)
 {
 	struct nand_part *part = to_nand_part(mtd);
+	loff_t part_ofs = part->offset;
 
-	return nand_block_checkbad(part->master, part->offset + offs, 1, 0);
+	if (part->slc_mode)
+		part_ofs /= 2;
+
+	return nand_block_checkbad(part->master, part_ofs + offs, 1, 0);
 }
 
 /**
@@ -3467,9 +3529,13 @@ static int nand_block_markbad(struct mtd_info *mtd, loff_t ofs)
 static int nand_part_block_markbad(struct mtd_info *mtd, loff_t ofs)
 {
 	struct nand_part *part = to_nand_part(mtd);
+	loff_t part_ofs = part->offset;
 	int ret;
 
-	ofs += part->offset;
+	if (part->slc_mode)
+		part_ofs /= 2;
+
+	ofs += part_ofs;
 	ret = nand_block_isbad(part->master, ofs);
 	if (ret) {
 		/* If it was bad already, return success and do nothing */
@@ -4778,6 +4844,9 @@ int nand_add_partition(struct mtd_info *master, struct nand_part *part)
 	bool inserted = false;
 	int ret;
 
+	if (!chip->set_slc_mode)
+		part->slc_mode = false;
+
 	/* set up the MTD object for this partition */
 	mtd->type = master->type;
 	mtd->flags = master->flags & ~mtd->flags;
@@ -4787,6 +4856,12 @@ int nand_add_partition(struct mtd_info *master, struct nand_part *part)
 	mtd->oobavail = master->oobavail;
 	mtd->subpage_sft = master->subpage_sft;
 	mtd->erasesize = master->erasesize;
+	mtd->size = part->size;
+
+	if (part->slc_mode) {
+		mtd->size /= 2;
+		mtd->erasesize /= 2;
+	}
 
 	mtd->priv = chip;
 	mtd->owner = master->owner;
@@ -4834,9 +4909,9 @@ int nand_add_partition(struct mtd_info *master, struct nand_part *part)
 
 	mutex_lock(&chip->part_lock);
 	list_for_each_entry(pos, &chip->partitions, node) {
-		if (part->offset >= pos->offset + pos->mtd.size) {
+		if (part->offset >= pos->offset + pos->size) {
 			continue;
-		} else if (part->offset + mtd->size > pos->offset) {
+		} else if (part->offset + part->size > pos->offset) {
 			ret = -EINVAL;
 			goto out;
 		}
