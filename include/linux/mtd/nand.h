@@ -178,17 +178,17 @@ typedef enum {
 /* Chip may not exist, so silence any errors in scan */
 #define NAND_SCAN_SILENT_NODEV	0x00040000
 /*
- * This option could be defined by controller drivers to protect against
- * kmap'ed, vmalloc'ed highmem buffers being passed from upper layers
- */
-#define NAND_USE_BOUNCE_BUFFER	0x00080000
-/*
  * Autodetect nand buswidth with readid/onfi.
  * This suppose the driver will configure the hardware in 8 bits mode
  * when calling nand_scan_ident, and update its configuration
  * before calling nand_scan_tail.
  */
-#define NAND_BUSWIDTH_AUTO      0x00080000
+#define NAND_BUSWIDTH_AUTO	0x00080000
+/*
+ * This option could be defined by controller drivers to protect against
+ * kmap'ed, vmalloc'ed highmem buffers being passed from upper layers
+ */
+#define NAND_USE_BOUNCE_BUFFER	0x00100000
 
 /* Options set by nand scan */
 /* Nand scan has allocated controller struct */
@@ -523,6 +523,82 @@ struct nand_ecc_ctrl {
 			int page);
 };
 
+/*
+ * Constants for page status
+ */
+enum nand_page_status {
+	NAND_PAGE_STATUS_UNKNOWN,
+	NAND_PAGE_EMPTY,
+	NAND_PAGE_FILLED,
+};
+
+bool nand_page_is_empty(struct mtd_info *mtd, void *data, void *oob);
+
+int nand_page_get_status(struct mtd_info *mtd, int page);
+
+void nand_page_set_status(struct mtd_info *mtd, int page,
+			  enum nand_page_status status);
+
+int nand_pst_create(struct mtd_info *mtd);
+
+/*
+ * Constants for randomizer modes
+ */
+typedef enum {
+	NAND_RND_NONE,
+	NAND_RND_SOFT,
+	NAND_RND_HW,
+} nand_rnd_modes_t;
+
+/*
+ * Constants for randomizer actions
+ */
+enum nand_rnd_action {
+	NAND_RND_NO_ACTION,
+	NAND_RND_READ,
+	NAND_RND_WRITE,
+};
+
+/**
+ * struct nand_rndfree - Structure defining a NAND page region where the
+ *			 randomizer should be disabled
+ * @offset:	range offset
+ * @length:	range length
+ */
+struct nand_rndfree {
+	u32 offset;
+	u32 length;
+};
+
+/**
+ * struct nand_rnd_layout - Structure defining rndfree regions
+ * @nranges:	number of ranges
+ * @ranges:	array defining the rndfree regions
+ */
+struct nand_rnd_layout {
+	int nranges;
+	struct nand_rndfree ranges[0];
+};
+
+/**
+ * struct nand_rnd_ctrl - Randomizer Control structure
+ * @mode:	Randomizer mode
+ * @config:	function to prepare the randomizer (i.e.: set the appropriate
+ *		seed/init value).
+ * @read_buf:	function that read from the NAND and descramble the retrieved
+ *		data.
+ * @write_buf:	function that scramble data before writing it to the NAND.
+ */
+struct nand_rnd_ctrl {
+	nand_rnd_modes_t mode;
+	struct nand_rnd_layout *layout;
+	void *priv;
+	int (*config)(struct mtd_info *mtd, int page, int column,
+		      enum nand_rnd_action action);
+	void (*write_buf)(struct mtd_info *mtd, const uint8_t *buf, int len);
+	void (*read_buf)(struct mtd_info *mtd, uint8_t *buf, int len);
+};
+
 /**
  * struct nand_buffers - buffer structure for read/write
  * @ecccalc:	buffer pointer for calculated ECC, size is oobsize.
@@ -633,6 +709,7 @@ struct nand_buffers {
  * @bbt_md:		[REPLACEABLE] bad block table mirror descriptor
  * @badblock_pattern:	[REPLACEABLE] bad block scan pattern used for initial
  *			bad block scan.
+ * @pst:		[INTERN] page status table
  * @controller:		[REPLACEABLE] a pointer to a hardware controller
  *			structure which is shared among multiple independent
  *			devices.
@@ -676,7 +753,13 @@ struct nand_chip {
 	int (*onfi_get_features)(struct mtd_info *mtd, struct nand_chip *chip,
 			int feature_addr, uint8_t *subfeature_para);
 	int (*setup_read_retry)(struct mtd_info *mtd, int retry_mode);
+	void (*manuf_cleanup)(struct mtd_info *mtd);
+	void (*set_slc_mode)(struct mtd_info *mtd);
+	void (*fix_page)(struct mtd_info *mtd, int *page);
 
+	void *manuf_priv;
+
+	bool slc_mode;
 	int chip_delay;
 	unsigned int options;
 	unsigned int bbt_options;
@@ -713,8 +796,12 @@ struct nand_chip {
 	struct nand_hw_control *controller;
 
 	struct nand_ecc_ctrl ecc;
+	struct nand_ecc_ctrl *cur_ecc;
 	struct nand_buffers *buffers;
 	struct nand_hw_control hwcontrol;
+
+	struct nand_rnd_ctrl rnd;
+	struct nand_rnd_ctrl *cur_rnd;
 
 	uint8_t *bbt;
 	struct nand_bbt_descr *bbt_td;
@@ -722,8 +809,51 @@ struct nand_chip {
 
 	struct nand_bbt_descr *badblock_pattern;
 
+	uint8_t *pst;
+
+	struct list_head partitions;
+	struct mutex part_lock;
+
 	void *priv;
 };
+
+/**
+ * struct nand_part - NAND partition structure
+ * @node:	list node used to attach the partition to its NAND dev
+ * @mtd:	MTD partiton info
+ * @master:	MTD device representing the NAND chip
+ * @offset:	partition offset
+ * @ecc:	partition specific ECC struct
+ * @rnd:	partition specific randomizer struct
+ * @release:	function used to release this nand_part struct
+ *
+ * NAND partitions work as standard MTD partitions except it can override
+ * NAND chip ECC handling.
+ * This is particularly useful for SoCs that need specific ECC configs to boot
+ * from NAND while these ECC configs do not fit the NAND chip ECC requirements.
+ */
+struct nand_part {
+	struct list_head node;
+	struct mtd_info mtd;
+	struct mtd_info *master;
+	uint64_t offset;
+	uint64_t size;
+	struct nand_ecc_ctrl *ecc;
+	struct nand_rnd_ctrl *rnd;
+	void (*release)(struct nand_part *part);
+	bool slc_mode;
+};
+
+static inline struct nand_part *to_nand_part(struct mtd_info *mtd)
+{
+	return container_of(mtd, struct nand_part, mtd);
+}
+
+int nand_add_partition(struct mtd_info *master, struct nand_part *part);
+
+void nand_del_partition(struct nand_part *part);
+
+struct nand_part *nandpart_alloc(void);
 
 /*
  * NAND Flash Manufacturer ID Codes
@@ -833,10 +963,13 @@ struct nand_flash_dev {
 struct nand_manufacturers {
 	int id;
 	char *name;
+	int (*init)(struct mtd_info *mtd, const uint8_t *id);
 };
 
 extern struct nand_flash_dev nand_flash_ids[];
 extern struct nand_manufacturers nand_manuf_ids[];
+
+int hynix_nand_init(struct mtd_info *mtd, const uint8_t *id);
 
 extern int nand_default_bbt(struct mtd_info *mtd);
 extern int nand_markbad_bbt(struct mtd_info *mtd, loff_t offs);
@@ -846,6 +979,41 @@ extern int nand_erase_nand(struct mtd_info *mtd, struct erase_info *instr,
 			   int allowbbt);
 extern int nand_do_read(struct mtd_info *mtd, loff_t from, size_t len,
 			size_t *retlen, uint8_t *buf);
+
+static inline int nand_rnd_config(struct mtd_info *mtd, int page, int column,
+				  enum nand_rnd_action action)
+{
+	struct nand_chip *chip = mtd->priv;
+
+	if (chip->cur_rnd && chip->cur_rnd->config)
+		return chip->cur_rnd->config(mtd, page, column, action);
+
+	return 0;
+}
+
+static inline void nand_rnd_write_buf(struct mtd_info *mtd, const uint8_t *buf,
+				     int len)
+{
+	struct nand_chip *chip = mtd->priv;
+
+	if (chip->cur_rnd && chip->cur_rnd->read_buf)
+		chip->cur_rnd->write_buf(mtd, buf, len);
+	else
+		chip->write_buf(mtd, buf, len);
+}
+
+static inline void nand_rnd_read_buf(struct mtd_info *mtd, uint8_t *buf,
+				    int len)
+{
+	struct nand_chip *chip = mtd->priv;
+
+	if (chip->cur_rnd && chip->cur_rnd->read_buf)
+		chip->cur_rnd->read_buf(mtd, buf, len);
+	else
+		chip->read_buf(mtd, buf, len);
+}
+
+int nand_rnd_is_activ(struct mtd_info *mtd, int page, int column, int *len);
 
 /**
  * struct platform_nand_chip - chip level device structure
@@ -978,6 +1146,23 @@ static inline int jedec_feature(struct nand_chip *chip)
 	return chip->jedec_version ? le16_to_cpu(chip->jedec_params.features)
 		: 0;
 }
+
+/**
+ * struct ofnandpart_data - struct used to retrieve NAND partitions from a DT
+ *			    node
+ * @parse:		driver specific parser function
+ * @priv:		driver private data
+ * @node:		OF node containing NAND partitions
+ */
+struct ofnandpart_data {
+	struct nand_part *(*parse)(void *priv, struct mtd_info *master,
+				   struct device_node *pp);
+	void *priv;
+	struct device_node *node;
+};
+
+int ofnandpart_parse(struct mtd_info *master,
+		     const struct ofnandpart_data *data);
 
 /*
  * struct nand_sdr_timings - SDR NAND chip timings
