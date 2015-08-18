@@ -22,6 +22,10 @@ menuconfig MTD_NAND
 
 if MTD_NAND
 
+config MTD_OF_NAND_PARTS
+	tristate
+	default n
+
 config MTD_NAND_BCH
 	tristate
 	select BCH
@@ -529,6 +533,7 @@ config MTD_NAND_XWAY
 config MTD_NAND_SUNXI
 	tristate "Support for NAND on Allwinner SoCs"
 	depends on ARCH_SUNXI
+	select MTD_OF_NAND_PARTS
 	help
 	  Enables support for NAND Flash chips on Allwinner SoCs.
 
