@@ -62,6 +62,27 @@
 
 	chosen {
 		stdout-path = "serial0:115200n8";
+
+		framebuffer@0 {
+			compatible = "allwinner,simple-framebuffer","simple-framebuffer";
+			allwinner,pipeline = "de_be0-lcd0-hdmi";
+			clocks = <&pll5 1>, <&ahb_gates 36>, <&ahb_gates 43>,<&ahb_gates 44>;
+			status = "disabled";
+		};
+		
+		framebuffer@1 {
+			compatible = "allwinner,simple-framebuffer","simple-framebuffer";
+			allwinner,pipeline = "de_be0-lcd0";
+			clocks = <&pll5 1>, <&ahb_gates 36>, <&ahb_gates 44>;
+			status = "disabled";
+		};
+		
+		framebuffer@2 {
+			compatible = "allwinner,simple-framebuffer", "simple-framebuffer";
+			allwinner,pipeline = "de_be0-lcd0-tve0";
+			clocks = <&pll5 1>, <&ahb_gates 34>, <&ahb_gates 36>, <&ahb_gates 44>;
+			status = "disabled";
+		};
 	};
 
 	dram_vcc: dram_vcc {
@@ -462,3 +483,5 @@
 	usb0_vbus-supply = <&usb0_vbus>;
 	usb1_vbus-supply = <&vcc_5v0>;
 };
+
+ 
