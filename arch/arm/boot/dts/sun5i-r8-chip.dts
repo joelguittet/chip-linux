@@ -43,7 +43,7 @@
  */
 
 /dts-v1/;
-#include "sun5i-a13.dtsi"
+#include "sun5i-r8.dtsi"
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/irq.h>
