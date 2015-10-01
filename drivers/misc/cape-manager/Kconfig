@@ -1,0 +1,6 @@
+menuconfig CAPE_MANAGER
+	bool "Cape manager support"
+	default n
+	depends on OF && OF_OVERLAY
+	help
+	  Cape Managers.
