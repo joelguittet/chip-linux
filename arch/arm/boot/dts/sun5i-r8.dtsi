@@ -86,4 +86,16 @@
 					     "ahb_mali400";
 		};
 	};
+
+	soc@01c00000 {
+		tve: encoder@01c0a000 {
+			compatible = "allwinner,sun4i-a10-tv-encoder";
+			reg = <0x01c0a000 0x1000>;
+			clocks = <&ahb_gates 34>;
+		};
+	};
+};
+
+&de {
+	allwinner,tv-encoder = <&tve>;
 };
