@@ -1373,6 +1373,141 @@ retry:
 	return ensure_wear_leveling(ubi, 0);
 }
 
+static int scrub_possible(struct ubi_device *ubi, struct ubi_wl_entry *e)
+{
+	if (in_wl_tree(e, &ubi->scrub))
+		return -EBUSY;
+	else if (in_wl_tree(e, &ubi->erroneous))
+		return -EBUSY;
+	else if (ubi->move_from == e)
+		return -EBUSY;
+	else if (ubi->move_to == e)
+		return -EBUSY;
+
+	return 0;
+}
+
+/**
+ * ubi_bitrot_check - Check an eraseblock for bitflips
+ * @ubi: UBI device description object
+ * @pnum: the physical eraseblock to schedule
+ * @force_scrub: force scrubbing if non-zero
+ *
+ * Returns:
+ * %EINVAL, PEB is out of range
+ * %ENOENT, PEB is no longer used by UBI
+ * %EBUSY, PEB cannot be checked now or a check is currently running on it
+ * %EAGAIN, bit flips happened but scrubbing is currently not possible
+ * %EUCLEAN, bit flips happened and PEB is scheduled for scrubbing
+ * %0, no bit flips detected
+ */
+int ubi_bitrot_check(struct ubi_device *ubi, int pnum, int force_scrub)
+{
+	int err;
+	struct ubi_wl_entry *e;
+	struct ubi_work *wl_wrk;
+
+	if (pnum < 0 || pnum >= ubi->peb_count) {
+		err = -EINVAL;
+		goto out;
+	}
+
+	/*
+	 * Pause all parallel work, otherwise it can happen that the
+	 * erase worker frees a wl entry under us.
+	 */
+	down_write(&ubi->work_sem);
+
+	/*
+	 * Make sure that the wl entry does not change state while
+	 * inspecting it.
+	 */
+	spin_lock(&ubi->wl_lock);
+	e = ubi->lookuptbl[pnum];
+	if (!e) {
+		spin_unlock(&ubi->wl_lock);
+		err = -ENOENT;
+		goto out_unlock;
+	}
+	/*
+	 * Does it make sense to check this PEB?
+	 * Maybe UBI is already inspecing it...
+	 */
+	err = scrub_possible(ubi, e);
+	spin_unlock(&ubi->wl_lock);
+	if (err)
+		goto out_unlock;
+
+	if (!force_scrub) {
+		mutex_lock(&ubi->buf_mutex);
+		err = ubi_io_read(ubi, ubi->peb_buf, e->pnum, 0, ubi->peb_size);
+		mutex_unlock(&ubi->buf_mutex);
+	}
+
+	if (err == UBI_IO_BITFLIPS || force_scrub) {
+		/*
+		 * Okay, bit flip happened, let figure what we can do.
+		 */
+		spin_lock(&ubi->wl_lock);
+
+		/*
+		 * Need to re-check state
+		 */
+		err = scrub_possible(ubi, e);
+		if (err) {
+			spin_unlock(&ubi->wl_lock);
+			goto out_unlock;
+		}
+
+		if (in_pq(ubi, e)) {
+			prot_queue_del(ubi, e->pnum);
+			wl_tree_add(e, &ubi->scrub);
+			spin_unlock(&ubi->wl_lock);
+
+			err = ensure_wear_leveling(ubi, 1);
+		} else if (in_wl_tree(e, &ubi->used)) {
+			rb_erase(&e->u.rb, &ubi->used);
+			wl_tree_add(e, &ubi->scrub);
+			spin_unlock(&ubi->wl_lock);
+
+			err = ensure_wear_leveling(ubi, 1);
+		} else if (in_wl_tree(e, &ubi->free)) {
+			rb_erase(&e->u.rb, &ubi->free);
+			spin_unlock(&ubi->wl_lock);
+
+			wl_wrk = prepare_erase_work(e, -1, -1, force_scrub ? 0 : 1);
+			if (IS_ERR(wl_wrk)) {
+				err = PTR_ERR(wl_wrk);
+				goto out_unlock;
+			}
+
+			__schedule_ubi_work(ubi, wl_wrk);
+		} else {
+			spin_unlock(&ubi->wl_lock);
+			up_write(&ubi->work_sem);
+			/*
+			 * e is owned by fastmap. We are not allowed to
+			 * move it as the on-flash fastmap data structure refers to it.
+			 * Let's schedule a new fastmap write
+			 * such that the said PEB can get released.
+			 */
+			ubi_update_fastmap(ubi);
+			err = -EAGAIN;
+			goto out;
+		}
+
+		if (!err && !force_scrub)
+			err = -EUCLEAN;
+	} else {
+		err = 0;
+	}
+
+out_unlock:
+	up_write(&ubi->work_sem);
+out:
+	return err;
+}
+
 /**
  * ubi_wl_flush - flush all pending works.
  * @ubi: UBI device description object
