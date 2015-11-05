@@ -992,6 +992,29 @@ static long ubi_cdev_ioctl(struct file *file, unsigned int cmd,
 		err = ubi_bitrot_check(ubi, pnum, 1);
 		break;
 	}
+	/* Get UBI stats */
+	case UBI_IOCSTATS:
+	{
+		struct ubi_stats_req *req;
+		struct ubi_stats_req __user *ureq = argp;
+
+		req = kmalloc(sizeof(struct ubi_stats_req), GFP_KERNEL);
+		if (!req) {
+			err = -ENOMEM;
+			break;
+		}
+
+		err = copy_from_user(req, argp, sizeof(struct ubi_stats_req));
+		if (err) {
+			kfree(req);
+			err = -EFAULT;
+			break;
+		}
+
+		err = ubi_wl_report_stats(ubi, req, ureq->stats);
+		kfree(req);
+		break;
+	}
 
 	default:
 		err = -ENOTTY;
