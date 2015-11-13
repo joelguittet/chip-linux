@@ -18,6 +18,8 @@
 #include <linux/string.h>
 #include <linux/log2.h>
 
+#include "clk-io.h"
+
 /*
  * DOC: basic adjustable divider clock that cannot gate
  *
@@ -142,7 +144,8 @@ static unsigned long clk_divider_recalc_rate(struct clk_hw *hw,
 	struct clk_divider *divider = to_clk_divider(hw);
 	unsigned int val;
 
-	val = clk_readl(divider->reg) >> divider->shift;
+	val = clk_io_readl(hw, divider->reg, divider->regmap, divider->offset);
+	val >>= divider->shift;
 	val &= div_mask(divider->width);
 
 	return divider_recalc_rate(hw, parent_rate, val, divider->table,
@@ -354,7 +357,10 @@ static long clk_divider_round_rate(struct clk_hw *hw, unsigned long rate,
 
 	/* if read only, just return current value */
 	if (divider->flags & CLK_DIVIDER_READ_ONLY) {
-		bestdiv = readl(divider->reg) >> divider->shift;
+		bestdiv = clk_io_readl(hw, divider->reg, divider->regmap,
+				divider->offset);
+
+		bestdiv >>= divider->shift;
 		bestdiv &= div_mask(divider->width);
 		bestdiv = _get_div(divider->table, bestdiv, divider->flags,
 			divider->width);
@@ -400,12 +406,16 @@ static int clk_divider_set_rate(struct clk_hw *hw, unsigned long rate,
 
 	if (divider->flags & CLK_DIVIDER_HIWORD_MASK) {
 		val = div_mask(divider->width) << (divider->shift + 16);
+		val |= value << divider->shift;
+		clk_io_writel(hw, divider->reg, divider->regmap,
+			divider->offset, val);
 	} else {
-		val = clk_readl(divider->reg);
-		val &= ~(div_mask(divider->width) << divider->shift);
+		u32 mask = div_mask(divider->width) << divider->shift;
+
+		val = value << divider->shift;
+		clk_io_update_bits(hw, divider->reg, divider->regmap,
+			divider->offset, mask, val);
 	}
-	val |= value << divider->shift;
-	clk_writel(val, divider->reg);
 
 	if (divider->lock)
 		spin_unlock_irqrestore(divider->lock, flags);
@@ -424,9 +434,9 @@ EXPORT_SYMBOL_GPL(clk_divider_ops);
 
 static struct clk *_register_divider(struct device *dev, const char *name,
 		const char *parent_name, unsigned long flags,
-		void __iomem *reg, u8 shift, u8 width,
-		u8 clk_divider_flags, const struct clk_div_table *table,
-		spinlock_t *lock)
+		void __iomem *reg, struct regmap *regmap, u32 offset,
+		u8 shift, u8 width, u8 clk_divider_flags,
+		const struct clk_div_table *table, spinlock_t *lock)
 {
 	struct clk_divider *div;
 	struct clk *clk;
@@ -451,7 +461,12 @@ static struct clk *_register_divider(struct device *dev, const char *name,
 	init.num_parents = (parent_name ? 1 : 0);
 
 	/* struct clk_divider assignments */
-	div->reg = reg;
+	if (flags & CLK_USE_REGMAP)
+		div->regmap = regmap;
+	else
+		div->reg = reg;
+
+	div->offset = offset;
 	div->shift = shift;
 	div->width = width;
 	div->flags = clk_divider_flags;
@@ -485,8 +500,8 @@ struct clk *clk_register_divider(struct device *dev, const char *name,
 		void __iomem *reg, u8 shift, u8 width,
 		u8 clk_divider_flags, spinlock_t *lock)
 {
-	return _register_divider(dev, name, parent_name, flags, reg, shift,
-			width, clk_divider_flags, NULL, lock);
+	return _register_divider(dev, name, parent_name, flags, reg, NULL, 0,
+			shift, width, clk_divider_flags, NULL, lock);
 }
 EXPORT_SYMBOL_GPL(clk_register_divider);
 
@@ -510,8 +525,8 @@ struct clk *clk_register_divider_table(struct device *dev, const char *name,
 		u8 clk_divider_flags, const struct clk_div_table *table,
 		spinlock_t *lock)
 {
-	return _register_divider(dev, name, parent_name, flags, reg, shift,
-			width, clk_divider_flags, table, lock);
+	return _register_divider(dev, name, parent_name, flags, reg, NULL, 0,
+			shift, width, clk_divider_flags, table, lock);
 }
 EXPORT_SYMBOL_GPL(clk_register_divider_table);
 
@@ -530,3 +545,28 @@ void clk_unregister_divider(struct clk *clk)
 	kfree(div);
 }
 EXPORT_SYMBOL_GPL(clk_unregister_divider);
+
+struct clk *clk_regm_register_divider(struct device *dev, const char *name,
+		const char *parent_name, unsigned long flags,
+		struct regmap *regmap, u32 offset, u8 shift, u8 width,
+		u8 clk_divider_flags, spinlock_t *lock)
+{
+	flags |= CLK_USE_REGMAP;
+
+	return _register_divider(dev, name, parent_name, flags, NULL, regmap,
+			offset,	shift, width, clk_divider_flags, NULL, lock);
+}
+EXPORT_SYMBOL_GPL(clk_regm_register_divider);
+
+struct clk *clk_regm_register_divider_table(struct device *dev,
+		const char *name, const char *parent_name, unsigned long flags,
+		struct regmap *regmap, u32 offset, u8 shift, u8 width,
+		u8 clk_divider_flags, const struct clk_div_table *table,
+		spinlock_t *lock)
+{
+	flags |= CLK_USE_REGMAP;
+
+	return _register_divider(dev, name, parent_name, flags, NULL, regmap,
+			offset,	shift, width, clk_divider_flags, table, lock);
+}
+EXPORT_SYMBOL_GPL(clk_regm_register_divider_table);

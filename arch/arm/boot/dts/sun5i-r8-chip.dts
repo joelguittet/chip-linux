@@ -43,7 +43,7 @@
  */
 
 /dts-v1/;
-#include "sun5i-a13.dtsi"
+#include "sun5i-r8.dtsi"
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/irq.h>
@@ -157,12 +157,21 @@
 		vin1-supply = <&vcc_wifi_2>;
 		regulator-always-on;
 	};
+
+	panel: panel {
+		compatible = "olimex,lcd-olinuxino-43-ts";
+	};
 };
 
 &codec {
 	routing =
 		"Headphone Jack", "HP Left",
 		"Headphone Jack", "HP Right";
+	status = "okay";
+};
+
+&de {
+	allwinner,panel = <&panel>;
 	status = "okay";
 };
 
