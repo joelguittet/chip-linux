@@ -1,0 +1,19 @@
+linux-4.3.0 (4.3.0-ntc-1ubuntu1~1.gbp038f76) UNRELEASED; urgency=medium
+
+  ** SNAPSHOT build @038f765c8bccdb22d045ad9f43fa0e885d0d885b **
+
+  * UNRELEASED
+
+ -- Jason Abele <jason@liveoak>  Thu, 12 Nov 2015 16:14:57 -0800
+
+linux-4.3.0 (4.3.0-ntc-1) jessie; urgency=low
+
+  * Pickup fixes for audio
+
+ -- Jason Abele <jason@nextthing.co>  Thu, 12 Nov 2015 15:13:40 -0800
+
+linux-4.3.0-g038f765 (4.3.0-ntc) jessie; urgency=low
+
+  * Custom built Linux kernel.
+
+ -- Jason Abele <jason@nextthing.co>  Tue, 10 Nov 2015 18:49:53 -0800
