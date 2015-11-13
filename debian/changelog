@@ -1,3 +1,13 @@
+linux-4.3.0 (4.3.0-ntc-1-1) jessie; urgency=low
+
+  [ Richard Reininger ]
+  * Fixed problem with Hynix NAND on CHIP - 4to5
+
+  [ Jason Abele ]
+  * update kernel to d7e5195 and fix config
+
+ -- Jason Abele <jason@nextthing.com>  Thu, 12 Nov 2015 17:04:26 -0800
+
 linux-4.3.0 (4.3.0-ntc-1ubuntu1~1.gbp038f76) jessie; urgency=low
 
   * Custom built Linux kernel.
