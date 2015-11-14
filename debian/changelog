@@ -1,3 +1,10 @@
+linux-4.3.0-3 (4.3.0-3-ntc) jessie; urgency=low
+
+  * Quiet many kernel logs
+  * Use CRDA rather than compiled-in regdb
+
+ -- Jason Abele <jason@nextthing.co>  Fri, 13 Nov 2015 21:43:20 -0800
+
 linux-4.3.0 (4.3.0-ntc-1-1) jessie; urgency=low
 
   [ Richard Reininger ]
