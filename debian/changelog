@@ -1,3 +1,35 @@
+linux-4.3.0 (4.3.0-ntc-4) jessie; urgency=high
+
+  [ Boris Brezillon ]
+  * mtd: nand: fix ONFI timings definition
+  * mtd: nand: add nand_check_erased helper functions
+  * mtd: nand: sunxi: rework macros
+  * mtd: sunxi: nand: refactor ->read_page()/->write_page() code
+  * mtd: nand: sunxi: fix bitflips in erased pages
+  * mtd: nand: pass page number to ecc->write_xxx() methods
+  * mtd: nand: sunxi: add randomizer support
+  * mtd: nand: sunxi: document the allwinner,randomize property
+  * mtd: nand/bbt: allow scanning bad block markers in raw mode
+  * mtd: nand: export default read/write oob functions
+  * mtd: nand: sunxi: implement specific ->read_oob()/->write_oob() functions
+  * mtd: mtdpart: fix add_mtd_partitions error path
+  * mtd: allow device-specific partition handling
+  * mtd: nand: Add manufacturer specific init code infrastructure
+  * mtd: nand: Add hynix specific initializer
+  * mtd: nand: hynix: add read-retry support for H27Q chips
+  * mtd: adapt nand_ecclayout eccpos table size
+  * mtd: nand: add full id for H27Q chips
+  * mtd: support SLC mode
+  * mtd: nand: support SLC mode
+  * UBI: use SLC mode when available
+  * mtd: nand: hynix: add SLC mode support
+  * mtd: UBI: support reading only subpages to retrieve the EC and VID headers
+  * mtd: nand: sunxi: implement ->read_subpage()
+  * mtd: nand: sunxi: improve ->cmd_ctrl() function
+  * mtd: nand: sunxi: poll for events instead of using interrupts
+
+ -- Jason Abele <jason@nextthing.co>  Sat, 14 Nov 2015 18:58:41 -0800
+
 linux-4.3.0-3 (4.3.0-3-ntc) jessie; urgency=low
 
   * Quiet many kernel logs
