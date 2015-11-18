@@ -1601,6 +1601,7 @@ int ubi_wl_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 		if (ubi->corr_peb_count)
 			ubi_err(ubi, "%d PEBs are corrupted and not used",
 				ubi->corr_peb_count);
+		err = -ENOSPC;
 		goto out_free;
 	}
 	ubi->avail_pebs -= reserved_pebs;
@@ -1831,7 +1832,7 @@ retry:
 	spin_unlock(&ubi->wl_lock);
 
 	err = ubi_self_check_all_ff(ubi, e->pnum, ubi->vid_hdr_aloffset,
-				    ubi->peb_size - ubi->vid_hdr_aloffset);
+				    ubi->usable_peb_size - ubi->vid_hdr_aloffset);
 	if (err) {
 		ubi_err(ubi, "new PEB %d does not contain all 0xFF bytes", e->pnum);
 		return err;
