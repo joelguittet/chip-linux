@@ -1351,7 +1351,7 @@ bool drm_mode_parse_command_line_for_connector(const char *mode_option,
 					       struct drm_cmdline_mode *mode)
 {
 	const char *name;
-	bool parse_extras = false;
+	bool named_mode = false, parse_extras = false;
 	unsigned int bpp_off = 0, refresh_off = 0;
 	unsigned int mode_end = 0;
 	char *bpp_ptr = NULL, *refresh_ptr = NULL, *extra_ptr = NULL;
@@ -1370,8 +1370,14 @@ bool drm_mode_parse_command_line_for_connector(const char *mode_option,
 
 	name = mode_option;
 
+	/*
+	 * If the first character is not a digit, then it means that
+	 * we have a named mode.
+	 */
 	if (!isdigit(name[0]))
-		return false;
+		named_mode = true;
+	else
+		named_mode = false;
 
 	/* Try to locate the bpp and refresh specifiers, if any */
 	bpp_ptr = strchr(name, '-');
@@ -1398,12 +1404,16 @@ bool drm_mode_parse_command_line_for_connector(const char *mode_option,
 		parse_extras = true;
 	}
 
-	ret = drm_mode_parse_cmdline_res_mode(name, mode_end,
-					      parse_extras,
-					      connector,
-					      mode);
-	if (ret)
-		return false;
+	if (named_mode) {
+		strncpy(mode->name, name, mode_end);
+	} else {
+		ret = drm_mode_parse_cmdline_res_mode(name, mode_end,
+						      parse_extras,
+						      connector,
+						      mode);
+		if (ret)
+			return false;
+	}
 	mode->specified = true;
 
 	if (bpp_ptr) {
@@ -1431,14 +1441,23 @@ bool drm_mode_parse_command_line_for_connector(const char *mode_option,
 		extra_ptr = refresh_end_ptr;
 
 	if (extra_ptr) {
-		int remaining = strlen(name) - (extra_ptr - name);
+		if (!named_mode) {
+			int len = strlen(name) - (extra_ptr - name);
 
-		/*
-		 * We still have characters to process, while
-		 * we shouldn't have any
-		 */
-		if (remaining > 0)
-			return false;
+			ret = drm_mode_parse_cmdline_extra(extra_ptr, len,
+							   connector, mode);
+			if (ret)
+				return false;
+		} else {
+			int remaining = strlen(name) - (extra_ptr - name);
+
+			/*
+			 * We still have characters to process, while
+			 * we shouldn't have any
+			 */
+			if (remaining > 0)
+				return false;
+		}
 	}
 
 	return true;
