@@ -485,6 +485,7 @@ struct drm_connector_funcs {
 
 /* mode specified on the command line */
 struct drm_cmdline_mode {
+	char name[DRM_DISPLAY_MODE_LEN];
 	bool specified;
 	bool refresh_specified;
 	bool bpp_specified;
