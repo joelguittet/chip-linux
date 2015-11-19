@@ -504,16 +504,16 @@ struct nand_ecc_ctrl {
 	int (*read_page_raw)(struct mtd_info *mtd, struct nand_chip *chip,
 			uint8_t *buf, int oob_required, int page);
 	int (*write_page_raw)(struct mtd_info *mtd, struct nand_chip *chip,
-			const uint8_t *buf, int oob_required);
+			const uint8_t *buf, int oob_required, int page);
 	int (*read_page)(struct mtd_info *mtd, struct nand_chip *chip,
 			uint8_t *buf, int oob_required, int page);
 	int (*read_subpage)(struct mtd_info *mtd, struct nand_chip *chip,
 			uint32_t offs, uint32_t len, uint8_t *buf, int page);
 	int (*write_subpage)(struct mtd_info *mtd, struct nand_chip *chip,
 			uint32_t offset, uint32_t data_len,
-			const uint8_t *data_buf, int oob_required);
+			const uint8_t *data_buf, int oob_required, int page);
 	int (*write_page)(struct mtd_info *mtd, struct nand_chip *chip,
-			const uint8_t *buf, int oob_required);
+			const uint8_t *buf, int oob_required, int page);
 	int (*write_oob_raw)(struct mtd_info *mtd, struct nand_chip *chip,
 			int page);
 	int (*read_oob_raw)(struct mtd_info *mtd, struct nand_chip *chip,
@@ -676,6 +676,11 @@ struct nand_chip {
 	int (*onfi_get_features)(struct mtd_info *mtd, struct nand_chip *chip,
 			int feature_addr, uint8_t *subfeature_para);
 	int (*setup_read_retry)(struct mtd_info *mtd, int retry_mode);
+	void (*manuf_cleanup)(struct mtd_info *mtd);
+	void (*set_slc_mode)(struct mtd_info *mtd, bool enable);
+	void (*fix_page)(struct mtd_info *mtd, int *page);
+
+	void *manuf_priv;
 
 	int chip_delay;
 	unsigned int options;
@@ -706,6 +711,7 @@ struct nand_chip {
 	};
 
 	int read_retries;
+	bool slc_mode;
 
 	flstate_t state;
 
@@ -833,10 +839,13 @@ struct nand_flash_dev {
 struct nand_manufacturers {
 	int id;
 	char *name;
+	int (*init)(struct mtd_info *mtd, const uint8_t *id);
 };
 
 extern struct nand_flash_dev nand_flash_ids[];
 extern struct nand_manufacturers nand_manuf_ids[];
+
+int hynix_nand_init(struct mtd_info *mtd, const uint8_t *id);
 
 extern int nand_default_bbt(struct mtd_info *mtd);
 extern int nand_markbad_bbt(struct mtd_info *mtd, loff_t offs);
@@ -1030,4 +1039,23 @@ struct nand_sdr_timings {
 
 /* get timing characteristics from ONFI timing mode. */
 const struct nand_sdr_timings *onfi_async_timing_mode_to_sdr_timings(int mode);
+
+int nand_check_erased_ecc_chunk(void *data, int datalen,
+				void *ecc, int ecclen,
+				void *extraoob, int extraooblen,
+				int threshold);
+
+/* Default write_oob implementation */
+int nand_write_oob_std(struct mtd_info *mtd, struct nand_chip *chip, int page);
+
+/* Default write_oob syndrome implementation */
+int nand_write_oob_syndrome(struct mtd_info *mtd, struct nand_chip *chip,
+			    int page);
+
+/* Default read_oob implementation */
+int nand_read_oob_std(struct mtd_info *mtd, struct nand_chip *chip, int page);
+
+/* Default read_oob syndrome implementation */
+int nand_read_oob_syndrome(struct mtd_info *mtd, struct nand_chip *chip,
+			   int page);
 #endif /* __LINUX_MTD_NAND_H */
