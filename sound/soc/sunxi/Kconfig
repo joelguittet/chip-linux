@@ -17,4 +17,13 @@ config SND_SUN4I_I2S
 	  the Allwinner A10 I2S. You will also need to select the
 	  individual machine drivers to support below.
 
+config SND_SUN4I_SPDIF
+	tristate "Allwinner A10 SPDIF Support"
+	depends on OF
+	select SND_SOC_GENERIC_DMAENGINE_PCM
+	select REGMAP_MMIO
+	help
+	  Say Y or M to add support for the S/PDIF audio block in the Allwinner
+	  A10 and affiliated SoCs.
+
 endmenu
