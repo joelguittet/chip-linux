@@ -791,9 +791,9 @@ static int sunxi_nfc_hw_ecc_read_chunk(struct mtd_info *mtd,
 	sunxi_nfc_randomizer_enable(mtd);
 	writel(NFC_DATA_TRANS | NFC_DATA_SWAP_METHOD | NFC_ECC_OP,
 	       nfc->regs + NFC_REG_CMD);
-	sunxi_nfc_randomizer_disable(mtd);
 
 	ret = sunxi_nfc_wait_int(nfc, NFC_CMD_INT_FLAG, 0);
+	sunxi_nfc_randomizer_disable(mtd);
 	if (ret)
 		return ret;
 
@@ -927,9 +927,9 @@ static int sunxi_nfc_hw_ecc_write_chunk(struct mtd_info *mtd,
 	writel(NFC_DATA_TRANS | NFC_DATA_SWAP_METHOD |
 	       NFC_ACCESS_DIR | NFC_ECC_OP,
 	       nfc->regs + NFC_REG_CMD);
-	sunxi_nfc_randomizer_disable(mtd);
 
 	ret = sunxi_nfc_wait_int(nfc, NFC_CMD_INT_FLAG, 0);
+	sunxi_nfc_randomizer_disable(mtd);
 	if (ret)
 		return ret;
 
