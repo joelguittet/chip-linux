@@ -1301,9 +1301,9 @@ static int sunxi_nand_chip_set_timings(struct sunxi_nand_chip *chip,
 	 * Convert min_clk_period into a clk frequency, then get the
 	 * appropriate rate for the NAND controller IP given this formula
 	 * (specified in the datasheet):
-	 * nand clk_rate = 2 * min_clk_rate
+	 * nand clk_rate = min_clk_rate
 	 */
-	chip->clk_rate = (2 * NSEC_PER_SEC) / min_clk_period;
+	chip->clk_rate = NSEC_PER_SEC / min_clk_period;
 
 	return 0;
 }
