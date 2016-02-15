@@ -175,9 +175,6 @@ MODULE_PARM_DESC(bbt,		 "0 OOB, 1 BBT with marker in OOB, 2 BBT with marker in d
 MODULE_PARM_DESC(bch,		 "Enable BCH ecc and set how many bits should "
 				 "be correctable in 512-byte blocks");
 
-/* The largest possible page size */
-#define NS_LARGEST_PAGE_SIZE	4096
-
 /* The prefix for simulator output */
 #define NS_OUTPUT_PREFIX "[nandsim]"
 
@@ -267,10 +264,8 @@ MODULE_PARM_DESC(bch,		 "Enable BCH ecc and set how many bits should "
 
 #define OPT_ANY          0xFFFFFFFF /* any chip supports this operation */
 #define OPT_PAGE512      0x00000002 /* 512-byte  page chips */
-#define OPT_PAGE2048     0x00000008 /* 2048-byte page chips */
+#define OPT_LARGEPAGE    0x00000008 /* >= 2048-byte page chips */
 #define OPT_PAGE512_8BIT 0x00000040 /* 512-byte page chips with 8-bit bus width */
-#define OPT_PAGE4096     0x00000080 /* 4096-byte page chips */
-#define OPT_LARGEPAGE    (OPT_PAGE2048 | OPT_PAGE4096) /* 2048 & 4096-byte page chips */
 #define OPT_SMALLPAGE    (OPT_PAGE512) /* 512-byte page chips */
 
 /* Remove action bits from state */
@@ -699,13 +694,18 @@ static int init_nandsim(struct mtd_info *mtd)
 		ns->options |= OPT_PAGE512;
 		if (ns->busw == 8)
 			ns->options |= OPT_PAGE512_8BIT;
-	} else if (ns->geom.pgsz == 2048) {
-		ns->options |= OPT_PAGE2048;
-	} else if (ns->geom.pgsz == 4096) {
-		ns->options |= OPT_PAGE4096;
-	} else {
-		NS_ERR("init_nandsim: unknown page size %u\n", ns->geom.pgsz);
-		return -EIO;
+	} else if (ns->geom.pgsz >= 2048) {
+		ns->options |= OPT_LARGEPAGE;
+	}
+
+	if (!is_power_of_2(ns->geom.pgsz)) {
+		NS_ERR("page size is not a power of two.\n");
+		return -EINVAL;
+	}
+
+	if (ns->geom.pgszoob > KMALLOC_MAX_SIZE) {
+		NS_ERR("page size plus oob too large: %u.\n", ns->geom.pgszoob);
+		return -EINVAL;
 	}
 
 	if (ns->options & OPT_SMALLPAGE) {
