@@ -137,6 +137,8 @@ typedef enum {
  * Option constants for bizarre disfunctionality and real
  * features.
  */
+/* Chip is simulated, be gentle. */
+#define NAND_SIMULATED		0x00000001
 /* Buswidth is 16 bit */
 #define NAND_BUSWIDTH_16	0x00000002
 /* Chip has cache program function */
