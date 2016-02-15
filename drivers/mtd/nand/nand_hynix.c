@@ -146,10 +146,14 @@ static int h27ucg8t2a_init(struct mtd_info *mtd, const uint8_t *id)
 	chip->manuf_priv = hynix;
 	chip->manuf_cleanup = h27_cleanup;
 
+	if (chip->options & NAND_SIMULATED)
+		goto out;
+
 	ret = h27ucg8t2a_rr_init(mtd);
 	if (ret)
 		kfree(hynix);
 
+out:
 	return ret;
 }
 
@@ -319,6 +323,9 @@ static int h27q_init(struct mtd_info *mtd, const uint8_t *id)
 	chip->manuf_priv = hynix;
 	chip->manuf_cleanup = h27_cleanup;
 
+	if (chip->options & NAND_SIMULATED)
+		goto out;
+
 	for (i = 0; i < ARRAY_SIZE(hq27_rr_tables); i++) {
 		ret = h27q_rr_init(mtd, &hq27_rr_tables[i]);
 		if (!ret)
@@ -328,6 +335,7 @@ static int h27q_init(struct mtd_info *mtd, const uint8_t *id)
 	if (ret)
 		kfree(hynix);
 
+out:
 	return ret;
 }
 
