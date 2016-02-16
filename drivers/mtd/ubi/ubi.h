@@ -30,6 +30,8 @@
 #include <linux/mutex.h>
 #include <linux/rwsem.h>
 #include <linux/spinlock.h>
+#include <linux/completion.h>
+#include <linux/kref.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
@@ -476,8 +478,8 @@ struct ubi_debug_info {
  *	     @erroneous, @erroneous_peb_count, @fm_work_scheduled, @fm_pool,
  *	     and @fm_wl_pool fields
  * @move_mutex: serializes eraseblock moves
- * @work_sem: used to wait for all the scheduled works to finish and prevent
- * new works from being submitted
+ * @work_mutex: used to protect the worker thread and block it temporary
+ * @cur_work: Pointer to the currently executed work
  * @wl_scheduled: non-zero if the wear-leveling was scheduled
  * @lookuptbl: a table to quickly find a &struct ubi_wl_entry object for any
  *             physical eraseblock
@@ -488,6 +490,7 @@ struct ubi_debug_info {
  * @works_count: count of pending works
  * @bgt_thread: background thread description object
  * @thread_enabled: if the background thread is enabled
+ * @thread_suspended: if the background thread is suspended
  * @bgt_name: background thread name
  *
  * @flash_size: underlying MTD device size (in bytes)
@@ -581,7 +584,8 @@ struct ubi_device {
 	int pq_head;
 	spinlock_t wl_lock;
 	struct mutex move_mutex;
-	struct rw_semaphore work_sem;
+	struct mutex work_mutex;
+	struct ubi_work *cur_work;
 	int wl_scheduled;
 	struct ubi_wl_entry **lookuptbl;
 	struct ubi_wl_entry *move_from;
@@ -591,6 +595,7 @@ struct ubi_device {
 	int works_count;
 	struct task_struct *bgt_thread;
 	int thread_enabled;
+	int thread_suspended;
 	char bgt_name[sizeof(UBI_BGT_NAME_PATTERN)+2];
 
 	/* I/O sub-system's stuff */
@@ -746,6 +751,9 @@ struct ubi_attach_info {
  * struct ubi_work - UBI work description data structure.
  * @list: a link in the list of pending works
  * @func: worker function
+ * @ret: return value of the worker function
+ * @comp: completion to wait on a work
+ * @ref: reference counter for work objects
  * @e: physical eraseblock to erase
  * @vol_id: the volume ID on which this erasure is being performed
  * @lnum: the logical eraseblock number
@@ -761,6 +769,9 @@ struct ubi_attach_info {
 struct ubi_work {
 	struct list_head list;
 	int (*func)(struct ubi_device *ubi, struct ubi_work *wrk, int shutdown);
+	int ret;
+	struct completion comp;
+	struct kref ref;
 	/* The below fields are only relevant to erasure works */
 	struct ubi_wl_entry *e;
 	int vol_id;
@@ -859,6 +870,8 @@ int ubi_wl_put_fm_peb(struct ubi_device *ubi, struct ubi_wl_entry *used_e,
 int ubi_is_erase_work(struct ubi_work *wrk);
 void ubi_refill_pools(struct ubi_device *ubi);
 int ubi_ensure_anchor_pebs(struct ubi_device *ubi);
+void ubi_wl_suspend_work(struct ubi_device *ubi);
+void ubi_wl_resume_work(struct ubi_device *ubi);
 
 /* io.c */
 int ubi_io_read(const struct ubi_device *ubi, void *buf, int pnum, int offset,
