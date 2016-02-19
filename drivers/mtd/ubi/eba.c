@@ -1732,7 +1732,7 @@ static int consolidation_worker(struct ubi_device *ubi,
 		ret = 0;
 
 	if (consolidation_needed(ubi))
-		ubi_schedule_work(ubi, wrk);
+		schedule_consolidation_work(ubi);
 
 	return ret;
 }
