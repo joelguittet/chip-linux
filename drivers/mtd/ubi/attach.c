@@ -147,7 +147,7 @@ static int add_to_list(struct ubi_attach_info *ai, int pnum, int ec,
 {
 	struct ubi_ainf_peb *aeb;
 
-	aeb = kmem_cache_alloc(ai->apeb_slab_cache, GFP_KERNEL);
+	aeb = kmem_cache_zalloc(ai->apeb_slab_cache, GFP_KERNEL);
 	if (!aeb)
 		return -ENOMEM;
 
