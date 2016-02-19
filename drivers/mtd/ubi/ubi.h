@@ -626,7 +626,6 @@ struct ubi_device {
 	int full_count;
 	int consolidation_threshold;
 	int consolidation_pnum;
-	struct ubi_work consolidation_work;
 	struct list_head consolidable;
 	struct mutex alc_mutex;
 

@@ -466,10 +466,26 @@ static bool consolidation_needed(struct ubi_device *ubi)
 	       ubi->consolidation_threshold;
 }
 
+static int consolidation_worker(struct ubi_device *ubi,
+				struct ubi_work *wrk,
+				int shutdown);
+
+static void schedule_consolidation_work(struct ubi_device *ubi)
+{
+	struct ubi_work *wrk = kzalloc(sizeof(*wrk), GFP_KERNEL);
+
+	if (wrk) {
+		wrk->func = &consolidation_worker;
+		INIT_LIST_HEAD(&wrk->list);
+		ubi_schedule_work(ubi, wrk);
+	} else
+		BUG();
+}
+
 void ubi_eba_consolidate(struct ubi_device *ubi)
 {
 	if (consolidation_possible(ubi) && ubi->consolidation_pnum >= 0)
-		ubi_schedule_work(ubi, &ubi->consolidation_work);
+		schedule_consolidation_work(ubi);
 }
 
 static void remove_full_leb(struct ubi_device *ubi, int vol_id, int lnum)
@@ -947,7 +963,7 @@ int ubi_eba_write_leb(struct ubi_device *ubi, struct ubi_volume *vol, int lnum,
 		leb_write_unlock(ubi, vol_id, lnum);
 
 		if (full && !err && consolidation_needed(ubi))
-			ubi_schedule_work(ubi, &ubi->consolidation_work);
+			schedule_consolidation_work(ubi);
 
 		return err;
 	}
@@ -1014,7 +1030,7 @@ retry:
 	ubi_free_vid_hdr(ubi, vid_hdr);
 
 	if (full && consolidation_needed(ubi))
-		ubi_schedule_work(ubi, &ubi->consolidation_work);
+		schedule_consolidation_work(ubi);
 
 	return 0;
 
@@ -1145,7 +1161,7 @@ retry:
 	ubi_free_vid_hdr(ubi, vid_hdr);
 
 	if (consolidation_needed(ubi))
-		ubi_schedule_work(ubi, &ubi->consolidation_work);
+		schedule_consolidation_work(ubi);
 
 	return 0;
 
@@ -1293,7 +1309,7 @@ out_mutex:
 	ubi_free_vid_hdr(ubi, vid_hdr);
 
 	if (full && !err && consolidation_needed(ubi))
-		ubi_schedule_work(ubi, &ubi->consolidation_work);
+		schedule_consolidation_work(ubi);
 
 	return err;
 
@@ -1884,8 +1900,6 @@ int ubi_eba_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 	spin_lock_init(&ubi->full_lock);
 	INIT_LIST_HEAD(&ubi->full);
 	ubi->full_count = 0;
-	ubi->consolidation_work.func = consolidation_worker;
-	INIT_LIST_HEAD(&ubi->consolidation_work.list);
 	ubi->consolidation_threshold = (ubi->avail_pebs + ubi->rsvd_pebs) / 3;
 	if (ubi->consolidation_threshold < ubi->lebs_per_cpeb)
 		ubi->consolidation_threshold = ubi->lebs_per_cpeb;
@@ -1961,7 +1975,7 @@ int ubi_eba_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 	}
 
 	if (ubi->lebs_per_cpeb > 1)
-		ubi_schedule_work(ubi, &ubi->consolidation_work);
+		schedule_consolidation_work(ubi);
 
 	dbg_eba("EBA sub-system is initialized");
 	return 0;
