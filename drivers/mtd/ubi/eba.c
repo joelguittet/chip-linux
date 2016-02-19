@@ -257,6 +257,31 @@ static int leb_write_lock(struct ubi_device *ubi, int vol_id, int lnum)
 }
 
 /**
+ * leb_consolidate_lock - lock logical eraseblock for consolidation.
+ * @ubi: UBI device description object
+ * @vol_id: volume ID
+ * @lnum: logical eraseblock number
+ * @pos: position of the LEB in the consolidated PEB
+ *
+ * This function locks a logical eraseblock for consolidation.
+ * Returns zero in case of success and a negative error code in case
+ * of failure.
+ */
+static int leb_consolidate_lock(struct ubi_device *ubi, int vol_id, int lnum,
+				int pos)
+{
+	struct ubi_ltree_entry *le;
+
+	le = ltree_add_entry(ubi, vol_id, lnum);
+	if (IS_ERR(le))
+		return PTR_ERR(le);
+
+	down_write_nested(&le->mutex, pos);
+
+	return 0;
+}
+
+/**
  * leb_write_lock - lock logical eraseblock for writing.
  * @ubi: UBI device description object
  * @vol_id: volume ID
@@ -368,7 +393,8 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 			goto err;
 		}
 
-		err = leb_write_lock(ubi, clebs[i].vol_id, clebs[i].lnum);
+		err = leb_consolidate_lock(ubi, clebs[i].vol_id,
+					   clebs[i].lnum, i);
 		if (err)
 			goto err;
 
@@ -1533,8 +1559,9 @@ static int consolidate_lebs(struct ubi_device *ubi)
 {
 	int i, pnum, offset = ubi->leb_start, err = 0;
 	struct ubi_vid_hdr *vid_hdrs;
-	struct ubi_leb_desc *clebs;
-	struct ubi_volume **vols;
+	struct ubi_leb_desc *clebs = NULL, *dup_clebs = NULL;
+	struct ubi_volume **vols = NULL;
+	int *opnums = NULL;
 
 	if (!consolidation_needed(ubi))
 		return 0;
@@ -1543,20 +1570,32 @@ static int consolidate_lebs(struct ubi_device *ubi)
 	if (!vols)
 		return -ENOMEM;
 
+	opnums = kzalloc(sizeof(*opnums) * ubi->lebs_per_cpeb, GFP_KERNEL);
+	if (!opnums) {
+		err = -ENOMEM;
+		goto err_free_mem;
+	}
+
 	clebs = kzalloc(sizeof(*clebs) * ubi->lebs_per_cpeb, GFP_KERNEL);
 	if (!clebs) {
 		err = -ENOMEM;
-		goto out_free_vols;
+		goto err_free_mem;
+	}
+
+	dup_clebs = kzalloc(sizeof(*clebs) * ubi->lebs_per_cpeb, GFP_KERNEL);
+	if (!dup_clebs) {
+		err = -ENOMEM;
+		goto err_free_mem;
 	}
 
 	err = find_consolidable_lebs(ubi, clebs, vols);
 	if (err)
-		goto out_free_clebs;
+		goto err_free_mem;
 
 	pnum = ubi_wl_get_peb(ubi, true);
 	if (pnum < 0) {
 		err = pnum;
-		goto out_unlock_lebs;
+		goto err_unlock_lebs;
 	}
 
 	mutex_lock(&ubi->buf_mutex);
@@ -1575,7 +1614,7 @@ static int consolidate_lebs(struct ubi_device *ubi)
 
 		err = ubi_io_read_data(ubi, buf, spnum, 0, ubi->leb_size);
 		if (err)
-			goto out;
+			goto err_unlock_buf;
 
 		vid_hdrs[i].data_pad = cpu_to_be32(vol->data_pad);
 		if (vol->vol_type == UBI_DYNAMIC_VOLUME) {
@@ -1606,48 +1645,57 @@ static int consolidate_lebs(struct ubi_device *ubi)
 	if (err) {
 		ubi_warn(ubi, "failed to write VID headers to PEB %d",
 			 pnum);
-		goto out_unlock_fm_eba;
+		goto err_unlock_buf;
 	}
 
 	err = ubi_io_raw_write(ubi, ubi->peb_buf + ubi->leb_start,
 			       pnum, ubi->leb_start,
 			       ubi->consolidated_peb_size - ubi->leb_start);
+	mutex_unlock(&ubi->buf_mutex);
 	if (err) {
 		ubi_warn(ubi, "failed to write %d bytes of data to PEB %d",
 			 ubi->consolidated_peb_size - ubi->leb_start, pnum);
-		goto out_unlock_fm_eba;
+		goto err_unlock_fm_eba;
 	}
 
-	ubi->consolidated[pnum] = clebs;
+	memcpy(dup_clebs, clebs, sizeof(*clebs) * ubi->lebs_per_cpeb);
+	ubi->consolidated[pnum] = dup_clebs;
 	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
-		int vol_id = clebs[i].vol_id, lnum = clebs[i].lnum;
 		struct ubi_volume *vol = vols[i];
-		int opnum;
+		int lnum = clebs[i].lnum;
 
-		opnum = vol->eba_tbl[lnum];
+		opnums[i] = vol->eba_tbl[lnum];
 		vol->eba_tbl[lnum] = pnum;
-		ubi_wl_put_peb(ubi, vol_id, lnum, opnum, 0, true);
 	}
 
-out_unlock_fm_eba:
 	up_read(&ubi->fm_eba_sem);
-out:
-	mutex_unlock(&ubi->buf_mutex);
-	if (err) {
-		for (i = 0; i < ubi->lebs_per_cpeb; i++)
-			add_full_leb(ubi, clebs[i].vol_id, clebs[i].lnum);
-
-		ubi_wl_put_peb(ubi, UBI_UNKNOWN, UBI_UNKNOWN, pnum, 0, true);
-	}
-
-out_unlock_lebs:
 	consolidation_unlock(ubi, clebs);
 
-out_free_clebs:
-	if (err)
-		kfree(clebs);
+	for (i = 0; i < ubi->lebs_per_cpeb; i++)
+		ubi_wl_put_peb(ubi, clebs[i].vol_id, clebs[i].lnum,
+			       opnums[i], 0, true);
 
-out_free_vols:
+	kfree(clebs);
+	kfree(opnums);
+	kfree(vols);
+
+	return 0;
+
+err_unlock_buf:
+	mutex_unlock(&ubi->buf_mutex);
+err_unlock_fm_eba:
+	up_read(&ubi->fm_eba_sem);
+
+	for (i = 0; i < ubi->lebs_per_cpeb; i++)
+		add_full_leb(ubi, clebs[i].vol_id, clebs[i].lnum);
+
+	ubi_wl_put_peb(ubi, UBI_UNKNOWN, UBI_UNKNOWN, pnum, 0, true);
+err_unlock_lebs:
+	consolidation_unlock(ubi, clebs);
+err_free_mem:
+	kfree(dup_clebs);
+	kfree(clebs);
+	kfree(opnums);
 	kfree(vols);
 
 	return err;
