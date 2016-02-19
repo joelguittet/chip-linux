@@ -625,6 +625,7 @@ struct ubi_device {
 	struct list_head full;
 	int full_count;
 	int consolidation_threshold;
+	int consolidation_pnum;
 	struct ubi_work consolidation_work;
 	struct list_head consolidable;
 	struct mutex alc_mutex;
@@ -918,7 +919,9 @@ int ubi_ensure_anchor_pebs(struct ubi_device *ubi);
 void ubi_wl_suspend_work(struct ubi_device *ubi);
 void ubi_wl_resume_work(struct ubi_device *ubi);
 void ubi_schedule_work(struct ubi_device *ubi, struct ubi_work *wrk);
-void ubi_reschedule_work(struct ubi_device *ubi, struct ubi_work *wrk);
+struct ubi_work *ubi_alloc_erase_work(struct ubi_device *ubi,
+				      struct ubi_wl_entry *e,
+				      int vol_id, int lnum, int torture);
 
 /* io.c */
 int ubi_io_read(const struct ubi_device *ubi, void *buf, int pnum, int offset,

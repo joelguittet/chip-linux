@@ -448,7 +448,7 @@ err:
 
 static bool consolidation_possible(struct ubi_device *ubi)
 {
-	if (!ubi->consolidated)
+	if (ubi->lebs_per_cpeb < 2)
 		return false;
 
 	if (ubi->full_count < ubi->lebs_per_cpeb)
@@ -468,7 +468,7 @@ static bool consolidation_needed(struct ubi_device *ubi)
 
 void ubi_eba_consolidate(struct ubi_device *ubi)
 {
-	if (consolidation_possible(ubi))
+	if (consolidation_possible(ubi) && ubi->consolidation_pnum >= 0)
 		ubi_schedule_work(ubi, &ubi->consolidation_work);
 }
 
@@ -1715,7 +1715,7 @@ static int consolidation_worker(struct ubi_device *ubi,
 		ret = 0;
 
 	if (consolidation_needed(ubi))
-		ubi_reschedule_work(ubi, wrk);
+		ubi_schedule_work(ubi, wrk);
 
 	return ret;
 }
@@ -1959,7 +1959,7 @@ int ubi_eba_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 		ubi->rsvd_pebs  += ubi->beb_rsvd_pebs;
 	}
 
-	if (consolidation_needed(ubi))
+	if (ubi->lebs_per_cpeb > 1)
 		ubi_schedule_work(ubi, &ubi->consolidation_work);
 
 	dbg_eba("EBA sub-system is initialized");

@@ -680,6 +680,27 @@ struct ubi_work *ubi_alloc_work(struct ubi_device *ubi)
 static int erase_worker(struct ubi_device *ubi, struct ubi_work *wl_wrk,
 			int shutdown);
 
+struct ubi_work *ubi_alloc_erase_work(struct ubi_device *ubi,
+				      struct ubi_wl_entry *e,
+				      int vol_id, int lnum, int torture)
+{
+	struct ubi_work *wl_wrk;
+
+	ubi_assert(e);
+
+	wl_wrk = ubi_alloc_work(ubi);
+	if (!wl_wrk)
+		return NULL;
+
+	wl_wrk->func = &erase_worker;
+	wl_wrk->e = e;
+	wl_wrk->vol_id = vol_id;
+	wl_wrk->lnum = lnum;
+	wl_wrk->torture = torture;
+
+	return wl_wrk;
+}
+
 /**
  * schedule_erase - schedule an erase work.
  * @ubi: UBI device description object
@@ -701,7 +722,7 @@ static int schedule_erase(struct ubi_device *ubi, struct ubi_wl_entry *e,
 	dbg_wl("schedule erasure of PEB %d, EC %d, torture %d",
 	       e->pnum, e->ec, torture);
 
-	wl_wrk = ubi_alloc_work(ubi);
+	wl_wrk = ubi_alloc_erase_work(ubi, e, vol_id, lnum, torture);
 	if (!wl_wrk)
 		return -ENOMEM;
 
@@ -1173,7 +1194,7 @@ static int __erase_worker(struct ubi_device *ubi, struct ubi_work *wl_wrk)
 		int err1;
 
 		/* Re-schedule the LEB for erasure */
-		err1 = schedule_erase(ubi, e, vol_id, lnum, 0, false);
+		err1 = schedule_erase(ubi, e, vol_id, lnum, 0, true);
 		if (err1) {
 			wl_entry_destroy(ubi, e);
 			err = err1;
@@ -1286,6 +1307,7 @@ int ubi_wl_put_peb(struct ubi_device *ubi, int vol_id, int lnum,
 {
 	int err;
 	struct ubi_wl_entry *e;
+	struct ubi_work *wrk;
 
 	dbg_wl("PEB %d", pnum);
 	ubi_assert(pnum >= 0);
@@ -1352,15 +1374,20 @@ retry:
 	}
 	spin_unlock(&ubi->wl_lock);
 
-	err = schedule_erase(ubi, e, vol_id, lnum, torture, nested);
-	if (err) {
+	wrk = ubi_alloc_erase_work(ubi, e, vol_id, lnum, torture);
+	if (!wrk) {
 		spin_lock(&ubi->wl_lock);
 		wl_tree_add(e, &ubi->used);
 		spin_unlock(&ubi->wl_lock);
 	}
-
 	up_read(&ubi->fm_protect);
-	return err;
+
+	if (!wrk)
+		return -ENOMEM;
+
+	ubi_schedule_work(ubi, wrk);
+
+	return 0;
 }
 
 /**
