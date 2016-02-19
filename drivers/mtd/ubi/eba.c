@@ -402,8 +402,14 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 		spin_lock(&ubi->volumes_lock);
 		vols[i] = ubi->volumes[vol_id2idx(ubi, clebs[i].vol_id)];
 		spin_unlock(&ubi->volumes_lock);
+		/* volume vanished under us */
 		if (!vols[i]) {
 			leb_write_unlock(ubi, clebs[i].vol_id, clebs[i].lnum);
+			spin_lock(&ubi->full_lock);
+			ubi->full_count--;
+			list_del(&fleb->node);
+			kfree(fleb);
+			spin_unlock(&ubi->full_lock);
 			continue;
 		}
 
