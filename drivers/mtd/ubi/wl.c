@@ -259,7 +259,10 @@ static int do_work(struct ubi_device *ubi)
 	spin_unlock(&ubi->wl_lock);
 
 	complete_all(&wrk->comp);
+
+	spin_lock(&ubi->wl_lock);
 	kref_put(&wrk->ref, destroy_work);
+	spin_unlock(&ubi->wl_lock);
 
 	return err;
 }
@@ -282,7 +285,9 @@ void ubi_wl_suspend_work(struct ubi_device *ubi)
 
 	if (wrk) {
 		wait_for_completion(&wrk->comp);
+		spin_lock(&ubi->wl_lock);
 		kref_put(&wrk->ref, destroy_work);
+		spin_unlock(&ubi->wl_lock);
 	}
 }
 
@@ -323,7 +328,9 @@ static bool wl_do_one_work_sync(struct ubi_device *ubi)
 		if (wrk->ret == 0)
 			success = true;
 
+		spin_lock(&ubi->wl_lock);
 		kref_put(&wrk->ref, destroy_work);
+		spin_unlock(&ubi->wl_lock);
 	}
 
 	return success;
@@ -1478,7 +1485,9 @@ int ubi_wl_flush(struct ubi_device *ubi)
 	if (wrk) {
 		wait_for_completion(&wrk->comp);
 		ret = wrk->ret;
+		spin_lock(&ubi->wl_lock);
 		kref_put(&wrk->ref, destroy_work);
+		spin_unlock(&ubi->wl_lock);
 	}
 
 	return ret;
@@ -1526,7 +1535,9 @@ static void __shutdown_work(struct ubi_device *ubi, int error)
 		wrk->func(ubi, wrk, 1);
 		wrk->ret = error;
 		complete_all(&wrk->comp);
+		spin_lock(&ubi->wl_lock);
 		kref_put(&wrk->ref, destroy_work);
+		spin_unlock(&ubi->wl_lock);
 		ubi->works_count -= 1;
 		ubi_assert(ubi->works_count >= 0);
 	}
