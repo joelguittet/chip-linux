@@ -385,13 +385,14 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 		spin_lock(&ubi->full_lock);
 		fleb = list_first_entry_or_null(&ubi->full,
 						struct ubi_full_leb, node);
-		clebs[i] = fleb->desc;
 		spin_unlock(&ubi->full_lock);
 
 		if (!fleb) {
 			err = -EAGAIN;
 			goto err;
 		}
+
+		clebs[i] = fleb->desc;
 
 		err = leb_consolidate_lock(ubi, clebs[i].vol_id,
 					   clebs[i].lnum, i);
