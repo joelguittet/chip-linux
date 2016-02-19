@@ -237,7 +237,7 @@ static int do_work(struct ubi_device *ubi)
 	}
 
 	wrk = list_entry(ubi->works.next, struct ubi_work, list);
-	list_del(&wrk->list);
+	list_del_init(&wrk->list);
 	ubi->works_count -= 1;
 	ubi_assert(ubi->works_count >= 0);
 	ubi->cur_work = wrk;
@@ -648,6 +648,30 @@ static void schedule_ubi_work(struct ubi_device *ubi, struct ubi_work *wrk)
 	mutex_unlock(&ubi->work_mutex);
 }
 
+//XXX fix names...
+void ubi_schedule_work(struct ubi_device *ubi, struct ubi_work *wrk)
+{
+	schedule_ubi_work(ubi, wrk);
+}
+
+void ubi_reschedule_work(struct ubi_device *ubi, struct ubi_work *wrk)
+{
+	schedule_ubi_work(ubi, wrk);
+}
+
+struct ubi_work *ubi_alloc_work(struct ubi_device *ubi)
+{
+	struct ubi_work *wrk;
+
+	wrk = kzalloc(sizeof(*wrk), GFP_NOFS);
+	if (!wrk)
+		return NULL;
+
+	INIT_LIST_HEAD(&wrk->list);
+
+	return wrk;
+}
+
 static int erase_worker(struct ubi_device *ubi, struct ubi_work *wl_wrk,
 			int shutdown);
 
@@ -672,7 +696,7 @@ static int schedule_erase(struct ubi_device *ubi, struct ubi_wl_entry *e,
 	dbg_wl("schedule erasure of PEB %d, EC %d, torture %d",
 	       e->pnum, e->ec, torture);
 
-	wl_wrk = kmalloc(sizeof(struct ubi_work), GFP_NOFS);
+	wl_wrk = ubi_alloc_work(ubi);
 	if (!wl_wrk)
 		return -ENOMEM;
 
@@ -707,6 +731,7 @@ static int do_sync_erase(struct ubi_device *ubi, struct ubi_wl_entry *e,
 	if (!wl_wrk)
 		return -ENOMEM;
 
+	INIT_LIST_HEAD(&wl_wrk->list);
 	wl_wrk->e = e;
 	wl_wrk->vol_id = vol_id;
 	wl_wrk->lnum = lnum;
@@ -1073,7 +1098,7 @@ static int ensure_wear_leveling(struct ubi_device *ubi)
 	ubi->wl_scheduled = 1;
 	spin_unlock(&ubi->wl_lock);
 
-	wrk = kmalloc(sizeof(struct ubi_work), GFP_NOFS);
+	wrk = ubi_alloc_work(ubi);
 	if (!wrk) {
 		err = -ENOMEM;
 		goto out_cancel;
@@ -1463,7 +1488,7 @@ static void __shutdown_work(struct ubi_device *ubi, int error)
 
 	while (!list_empty(&ubi->works)) {
 		wrk = list_entry(ubi->works.next, struct ubi_work, list);
-		list_del(&wrk->list);
+		list_del_init(&wrk->list);
 		wrk->func(ubi, wrk, 1);
 		wrk->ret = error;
 		complete_all(&wrk->comp);
@@ -1556,8 +1581,10 @@ int ubi_wl_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 	int err, i, reserved_pebs, found_pebs = 0;
 	struct rb_node *rb1, *rb2;
 	struct ubi_ainf_volume *av;
-	struct ubi_ainf_peb *aeb, *tmp;
+	struct ubi_ainf_leb *leb;
+	struct ubi_ainf_peb *peb, *tmp;
 	struct ubi_wl_entry *e;
+	struct ubi_leb_desc *clebs;
 
 	ubi->used = ubi->erroneous = ubi->free = ubi->scrub = RB_ROOT;
 	spin_lock_init(&ubi->wl_lock);
@@ -1573,21 +1600,32 @@ int ubi_wl_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 	if (!ubi->lookuptbl)
 		return err;
 
+	/* FIXME: make this creation optional. */
+	ubi->consolidated = kzalloc(ubi->peb_count * sizeof(void *),
+				    GFP_KERNEL);
+	if (!ubi->consolidated) {
+		kfree(ubi->lookuptbl);
+		return err;
+	}
+
 	for (i = 0; i < UBI_PROT_QUEUE_LEN; i++)
 		INIT_LIST_HEAD(&ubi->pq[i]);
 	ubi->pq_head = 0;
 
-	list_for_each_entry_safe(aeb, tmp, &ai->erase, u.list) {
+	list_for_each_entry_safe(peb, tmp, &ai->erase, list) {
 		cond_resched();
+
+		if (ubi->lookuptbl[peb->pnum])
+			continue;
 
 		e = kmem_cache_alloc(ubi_wl_entry_slab, GFP_KERNEL);
 		if (!e)
 			goto out_free;
 
-		e->pnum = aeb->pnum;
-		e->ec = aeb->ec;
+		e->pnum = peb->pnum;
+		e->ec = peb->ec;
 		ubi->lookuptbl[e->pnum] = e;
-		if (schedule_erase(ubi, e, aeb->vol_id, aeb->lnum, 0)) {
+		if (schedule_erase(ubi, e, UBI_UNKNOWN, UBI_UNKNOWN, 0)) {
 			wl_entry_destroy(ubi, e);
 			goto out_free;
 		}
@@ -1596,15 +1634,18 @@ int ubi_wl_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 	}
 
 	ubi->free_count = 0;
-	list_for_each_entry(aeb, &ai->free, u.list) {
+	list_for_each_entry(peb, &ai->free, list) {
 		cond_resched();
+
+		if (ubi->lookuptbl[peb->pnum])
+			continue;
 
 		e = kmem_cache_alloc(ubi_wl_entry_slab, GFP_KERNEL);
 		if (!e)
 			goto out_free;
 
-		e->pnum = aeb->pnum;
-		e->ec = aeb->ec;
+		e->pnum = peb->pnum;
+		e->ec = peb->ec;
 		ubi_assert(e->ec >= 0);
 
 		wl_tree_add(e, &ubi->free);
@@ -1615,29 +1656,52 @@ int ubi_wl_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 		found_pebs++;
 	}
 
-	ubi_rb_for_each_entry(rb1, av, &ai->volumes, rb) {
-		ubi_rb_for_each_entry(rb2, aeb, &av->root, u.rb) {
-			cond_resched();
+	list_for_each_entry(peb, &ai->used, list) {
+		e = kmem_cache_alloc(ubi_wl_entry_slab, GFP_KERNEL);
+		if (!e)
+			goto out_free;
 
-			e = kmem_cache_alloc(ubi_wl_entry_slab, GFP_KERNEL);
-			if (!e)
+		e->pnum = peb->pnum;
+		e->ec = peb->ec;
+		ubi->lookuptbl[e->pnum] = e;
+
+		if (!peb->scrub) {
+			dbg_wl("add PEB %d EC %d to the used tree",
+			       e->pnum, e->ec);
+			wl_tree_add(e, &ubi->used);
+		} else {
+			dbg_wl("add PEB %d EC %d to the scrub tree",
+			       e->pnum, e->ec);
+			wl_tree_add(e, &ubi->scrub);
+		}
+
+		if (peb->consolidated) {
+			int i;
+
+			clebs = kmalloc(sizeof(*clebs) *
+					ubi->lebs_per_consolidated_peb,
+					GFP_KERNEL);
+			if (!clebs)
 				goto out_free;
 
-			e->pnum = aeb->pnum;
-			e->ec = aeb->ec;
-			ubi->lookuptbl[e->pnum] = e;
-
-			if (!aeb->scrub) {
-				dbg_wl("add PEB %d EC %d to the used tree",
-				       e->pnum, e->ec);
-				wl_tree_add(e, &ubi->used);
-			} else {
-				dbg_wl("add PEB %d EC %d to the scrub tree",
-				       e->pnum, e->ec);
-				wl_tree_add(e, &ubi->scrub);
+			for (i = 0; i < ubi->lebs_per_consolidated_peb; i++) {
+				clebs[i].lnum = -1;
+				clebs[i].vol_id = -1;
 			}
 
-			found_pebs++;
+			ubi->consolidated[peb->pnum] = clebs;
+		}
+
+		found_pebs++;
+	}
+
+	ubi_rb_for_each_entry(rb1, av, &ai->volumes, rb) {
+		ubi_rb_for_each_entry(rb2, leb, &av->root, rb) {
+			cond_resched();
+
+			clebs = ubi->consolidated[leb->peb->pnum];
+			if (clebs)
+				clebs[leb->peb_pos] = leb->desc;
 		}
 	}
 
@@ -1682,6 +1746,7 @@ out_free:
 	tree_destroy(ubi, &ubi->used);
 	tree_destroy(ubi, &ubi->free);
 	tree_destroy(ubi, &ubi->scrub);
+	kfree(ubi->consolidated);
 	kfree(ubi->lookuptbl);
 	return err;
 }
@@ -1718,6 +1783,7 @@ void ubi_wl_close(struct ubi_device *ubi)
 	tree_destroy(ubi, &ubi->free);
 	tree_destroy(ubi, &ubi->scrub);
 	kfree(ubi->lookuptbl);
+	kfree(ubi->consolidated);
 }
 
 /**
