@@ -1552,7 +1552,7 @@ static void consolidation_unlock(struct ubi_device *ubi,
 	int i;
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++)
-		leb_read_unlock(ubi, clebs[i].vol_id, clebs[i].lnum);
+		leb_write_unlock(ubi, clebs[i].vol_id, clebs[i].lnum);
 }
 
 static int consolidate_lebs(struct ubi_device *ubi)
