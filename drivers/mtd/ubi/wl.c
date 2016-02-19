@@ -446,7 +446,7 @@ static struct ubi_wl_entry *find_mean_wl_entry(struct ubi_device *ubi,
 {
 	struct ubi_wl_entry *e, *first, *last;
 
-	ubi_assert(!root->rb_node);
+	ubi_assert(root->rb_node);
 
 	if (!root->rb_node)
 		return NULL;
