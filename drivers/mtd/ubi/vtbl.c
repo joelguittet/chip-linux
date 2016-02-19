@@ -333,9 +333,12 @@ retry:
 	if (err)
 		goto write_error;
 
-	err = ubi_io_write_data(ubi, vtbl, new_aeb->pnum,
-				ubi->leb_size - ubi->min_io_size,
-				ubi->min_io_size);
+	if (ubi->vtbl_size < ubi->leb_size) { //XXX
+		err = ubi_io_write_data(ubi, vtbl, new_aeb->pnum,
+					ubi->leb_size - ubi->min_io_size,
+					ubi->min_io_size);
+	}
+
 	if (err)
 		goto write_error;
 	/*
