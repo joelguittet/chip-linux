@@ -180,6 +180,8 @@ void ubi_refill_pools(struct ubi_device *ubi)
  * disabled. Returns zero in case of success and a negative error code in case
  * of failure.
  */
+
+#error call ubi_eba_consolidate
 static int produce_free_peb(struct ubi_device *ubi)
 {
 	while (!ubi->free.rb_node) {

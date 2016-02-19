@@ -1946,8 +1946,11 @@ retry:
 	spin_lock(&ubi->wl_lock);
 	if (!ubi->free.rb_node && !nested) {
 		if (ubi->works_count == 0) {
-			ubi_assert(list_empty(&ubi->works));
-			goto out;
+			ubi_eba_consolidate(ubi);
+			if (ubi->works_count == 0) {
+				ubi_assert(list_empty(&ubi->works));
+				goto out;
+			}
 		}
 
 		err = produce_free_peb(ubi);
