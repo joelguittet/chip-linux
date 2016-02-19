@@ -1595,6 +1595,7 @@ static int consolidate_lebs(struct ubi_device *ubi)
 	pnum = ubi_wl_get_peb(ubi, true);
 	if (pnum < 0) {
 		err = pnum;
+		up_read(&ubi->fm_eba_sem);
 		goto err_unlock_lebs;
 	}
 
