@@ -1979,7 +1979,13 @@ retry:
 	down_read(&ubi->fm_eba_sem);
 	spin_lock(&ubi->wl_lock);
 	if (!ubi->free.rb_node) {
-		if (ubi->works_count == 0 && !nested) {
+		if (nested) {
+			//nothing we can do
+			spin_unlock(&ubi->wl_lock);
+			return -ENOSPC;
+		}
+
+		if (ubi->works_count == 0) {
 			ubi_eba_consolidate(ubi);
 			if (ubi->works_count == 0) {
 				ubi_assert(list_empty(&ubi->works));
