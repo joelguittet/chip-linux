@@ -939,8 +939,8 @@ static inline int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int 
 {
 	return 0;
 }
-static inline ubi_conso_init(struct ubi_device *ubi) { return 0; }
-static inline ubi_conso_close(struct ubi_device *ubi) {}
+static inline int ubi_conso_init(struct ubi_device *ubi) { return 0; }
+static inline void ubi_conso_close(struct ubi_device *ubi) {}
 #endif
 
 /* wl.c */
