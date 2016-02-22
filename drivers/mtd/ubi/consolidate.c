@@ -381,3 +381,45 @@ int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum)
 
 	return 0;
 }
+
+int ubi_conso_init(struct ubi_device *ubi)
+{
+	spin_lock_init(&ubi->full_lock);
+	INIT_LIST_HEAD(&ubi->full);
+	ubi->full_count = 0;
+	ubi->consolidation_threshold = (ubi->avail_pebs + ubi->rsvd_pebs) / 3;
+
+	if (ubi->consolidation_threshold < ubi->lebs_per_cpeb)
+		ubi->consolidation_threshold = ubi->lebs_per_cpeb;
+
+	if (ubi->lebs_per_cpeb == 1)
+		return 0;
+
+	if (ubi->avail_pebs < UBI_CONSO_RESERVED_PEBS) {
+		ubi_err(ubi, "no enough physical eraseblocks (%d, need %d)",
+			ubi->avail_pebs, UBI_CONSO_RESERVED_PEBS);
+		if (ubi->corr_peb_count)
+			ubi_err(ubi, "%d PEBs are corrupted and not used",
+				ubi->corr_peb_count);
+		return -ENOSPC;
+	}
+
+	ubi->avail_pebs -= UBI_CONSO_RESERVED_PEBS;
+	ubi->rsvd_pebs += UBI_CONSO_RESERVED_PEBS;
+
+	return 0;
+}
+
+void ubi_conso_close(struct ubi_device *ubi)
+{
+	struct ubi_full_leb *fleb;
+
+	while(!list_empty(&ubi->full)) {
+		fleb = list_first_entry(&ubi->full, struct ubi_full_leb, node);
+		list_del(&fleb->node);
+		kfree(fleb);
+		ubi->full_count--;
+	}
+
+	ubi_assert(ubi->full_count == 0);
+}

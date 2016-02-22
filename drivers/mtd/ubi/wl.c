@@ -1946,8 +1946,11 @@ static int self_check_in_pq(const struct ubi_device *ubi,
 
 static bool enough_free_pebs(struct ubi_device *ubi)
 {
-	/* Hold back one PEB for the producing case. */
-	return ubi->free_count > 1;
+	/*
+	 * Hold back one PEB for the producing case,
+	 * currently only for consolidation.
+	 */
+	return ubi->free_count > UBI_CONSO_RESERVED_PEBS;
 }
 
 #ifndef CONFIG_MTD_UBI_FASTMAP

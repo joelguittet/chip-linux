@@ -48,7 +48,6 @@
 
 /* Number of physical eraseblocks reserved for atomic LEB change operation */
 #define EBA_RESERVED_PEBS 1
-#define EBA_CONSO_RESERVED_PEBS 1
 
 /**
  * next_sqnum - get next sequence number.
@@ -1498,13 +1497,6 @@ int ubi_eba_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 	spin_lock_init(&ubi->ltree_lock);
 	ubi->ltree = RB_ROOT;
 
-	spin_lock_init(&ubi->full_lock);
-	INIT_LIST_HEAD(&ubi->full);
-	ubi->full_count = 0;
-	ubi->consolidation_threshold = (ubi->avail_pebs + ubi->rsvd_pebs) / 3;
-	if (ubi->consolidation_threshold < ubi->lebs_per_cpeb)
-		ubi->consolidation_threshold = ubi->lebs_per_cpeb;
-
 	ubi->global_sqnum = ai->max_sqnum + 1;
 	num_volumes = ubi->vtbl_slots + UBI_INT_VOL_COUNT;
 
@@ -1545,9 +1537,6 @@ int ubi_eba_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 			}
 		}
 	}
-
-	if (ubi->lebs_per_cpeb > 1)
-		eba_rsvd += EBA_CONSO_RESERVED_PEBS;
 
 	if (ubi->avail_pebs < eba_rsvd) {
 		ubi_err(ubi, "no enough physical eraseblocks (%d, need %d)",

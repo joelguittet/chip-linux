@@ -86,6 +86,12 @@
 /* The volume ID/LEB number/erase counter is unknown */
 #define UBI_UNKNOWN -1
 
+#ifdef CONFIG_MTD_UBI_CONSOLIDATE
+/* Number of PEBs reserved for consolidation */
+#define UBI_CONSO_RESERVED_PEBS 1
+#else
+#define UBI_CONSO_RESERVED_PEBS 0
+#endif
 /*
  * The UBI debugfs directory name pattern and maximum name length (3 for "ubi"
  * + 2 for the number plus 1 for the trailing zero byte.
@@ -911,6 +917,8 @@ struct ubi_leb_desc *ubi_conso_get_consolidated(struct ubi_device *ubi,
 bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
 			      int vol_id, int lnum);
 int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum);
+int ubi_conso_init(struct ubi_device *ubi);
+void ubi_conso_close(struct ubi_device *ubi);
 #else
 static inline bool ubi_conso_consolidation_needed(struct ubi_device *ubi)
 {
@@ -931,6 +939,8 @@ static inline int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int 
 {
 	return 0;
 }
+static inline ubi_conso_init(struct ubi_device *ubi) { return 0; }
+static inline ubi_conso_close(struct ubi_device *ubi) {}
 #endif
 
 /* wl.c */

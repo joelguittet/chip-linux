@@ -1501,9 +1501,13 @@ int ubi_attach(struct ubi_device *ubi, int force_scan)
 	if (err)
 		goto out_vtbl;
 
-	err = ubi_eba_init(ubi, ai);
+	err = ubi_conso_init(ubi);
 	if (err)
 		goto out_wl;
+
+	err = ubi_eba_init(ubi, ai);
+	if (err)
+		goto out_conso;
 
 #ifdef CONFIG_MTD_UBI_FASTMAP
 	if (ubi->fm && ubi_dbg_chk_fastmap(ubi)) {
@@ -1532,6 +1536,8 @@ int ubi_attach(struct ubi_device *ubi, int force_scan)
 	destroy_ai(ai);
 	return 0;
 
+out_conso:
+	ubi_conso_close(ubi);
 out_wl:
 	ubi_wl_close(ubi);
 out_vtbl:
