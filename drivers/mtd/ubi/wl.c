@@ -1310,7 +1310,7 @@ static int erase_worker(struct ubi_device *ubi, struct ubi_work *wl_wrk,
  * in case of success, and a negative error code in case of failure.
  */
 int ubi_wl_put_peb(struct ubi_device *ubi, int vol_id, int lnum,
-		   int pnum, int torture, bool nested)
+		   int pnum, int torture, bool producing)
 {
 	int err;
 	struct ubi_wl_entry *e;
@@ -1380,6 +1380,19 @@ retry:
 		}
 	}
 	spin_unlock(&ubi->wl_lock);
+
+	/*
+	 * Currently we allow multiple consolidation works being scheduled
+	 * to make sure that free PEBs are aggressively produced and we don't
+	 * have to block at lot in produce_free_peb().
+	 * As consequence we have to erase the new PEB in sync. If we don't
+	 * do that the erase job will be scheduled at the end of the work list
+	 * and other consolidation works will starve.
+	 */
+	if (producing) {
+		up_read(&ubi->fm_protect);
+		return do_sync_erase(ubi, e, vol_id, lnum, torture);
+	}
 
 	wrk = ubi_alloc_erase_work(ubi, e, vol_id, lnum, torture);
 	if (!wrk) {
@@ -1930,10 +1943,20 @@ static int self_check_in_pq(const struct ubi_device *ubi,
 	dump_stack();
 	return -EINVAL;
 }
+
+static bool enough_free_pebs(struct ubi_device *ubi)
+{
+	/* Hold back one PEB for the producing case. */
+	return ubi->free_count > 1;
+}
+
 #ifndef CONFIG_MTD_UBI_FASTMAP
 static struct ubi_wl_entry *get_peb_for_wl(struct ubi_device *ubi)
 {
 	struct ubi_wl_entry *e;
+
+	if (!enough_free_pebs(ubi))
+		return NULL;
 
 	e = find_wl_entry(ubi, &ubi->free, WL_FREE_MAX_DIFF);
 	self_check_in_wl_tree(ubi, e, &ubi->free);
@@ -1957,8 +1980,10 @@ static int produce_free_peb(struct ubi_device *ubi)
 {
 	ubi_assert(spin_is_locked(&ubi->wl_lock));
 
-	while (!ubi->free.rb_node) {
+	while (!enough_free_pebs(ubi)) {
 		spin_unlock(&ubi->wl_lock);
+
+		ubi_eba_consolidate(ubi);
 
 		dbg_wl("do one work synchronously");
 		if (!wl_do_one_work_sync(ubi)) {
@@ -1976,12 +2001,15 @@ static int produce_free_peb(struct ubi_device *ubi)
 /**
  * ubi_wl_get_peb - get a physical eraseblock.
  * @ubi: UBI device description object
+ * @producing: true if this function is being called from a context
+ * which is trying to produce more free PEBs but needs a new one to
+ * achieve that. i.e. consolidatation work.
  *
  * This function returns a physical eraseblock in case of success and a
  * negative error code in case of failure.
  * Returns with ubi->fm_eba_sem held in read mode!
  */
-int ubi_wl_get_peb(struct ubi_device *ubi, bool nested)
+int ubi_wl_get_peb(struct ubi_device *ubi, bool producing)
 {
 	int err = 0;
 	struct ubi_wl_entry *e;
@@ -1989,19 +2017,13 @@ int ubi_wl_get_peb(struct ubi_device *ubi, bool nested)
 retry:
 	down_read(&ubi->fm_eba_sem);
 	spin_lock(&ubi->wl_lock);
-	if (!ubi->free.rb_node) {
-		if (nested) {
-			//nothing we can do
+
+	if (!enough_free_pebs(ubi) && !producing) {
+		if (ubi->works_count == 0) {
+			ubi_err(ubi, "no free eraseblocks");
+			ubi_assert(list_empty(&ubi->works));
 			spin_unlock(&ubi->wl_lock);
 			return -ENOSPC;
-		}
-
-		if (ubi->works_count == 0) {
-			ubi_eba_consolidate(ubi);
-			if (ubi->works_count == 0) {
-				ubi_assert(list_empty(&ubi->works));
-				goto out;
-			}
 		}
 
 		err = produce_free_peb(ubi);
@@ -2013,8 +2035,13 @@ retry:
 		up_read(&ubi->fm_eba_sem);
 		goto retry;
 	}
+	else if (!ubi->free_count && producing) {
+		ubi_err(ubi, "no free eraseblocks in producing case");
+		ubi_assert(0);
+		spin_unlock(&ubi->wl_lock);
+		return -ENOSPC;
+	}
 
-out:
 	e = wl_get_wle(ubi);
 	if (e)
 		prot_queue_add(ubi, e);

@@ -628,6 +628,7 @@ struct ubi_device {
 	int consolidation_pnum;
 	struct list_head consolidable;
 	struct mutex alc_mutex;
+	struct mutex conso_mutex;
 
 	/* Fastmap stuff */
 	int fm_disabled;
@@ -901,9 +902,9 @@ int self_check_eba(struct ubi_device *ubi, struct ubi_attach_info *ai_fastmap,
 		   struct ubi_attach_info *ai_scan);
 
 /* wl.c */
-int ubi_wl_get_peb(struct ubi_device *ubi, bool nested);
+int ubi_wl_get_peb(struct ubi_device *ubi, bool producing);
 int ubi_wl_put_peb(struct ubi_device *ubi, int vol_id, int lnum,
-		   int pnum, int torture, bool nested);
+		   int pnum, int torture, bool producing);
 int ubi_wl_flush(struct ubi_device *ubi);
 int ubi_wl_scrub_peb(struct ubi_device *ubi, int pnum);
 int ubi_wl_init(struct ubi_device *ubi, struct ubi_attach_info *ai);

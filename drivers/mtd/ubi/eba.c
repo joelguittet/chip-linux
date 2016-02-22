@@ -369,7 +369,7 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 				  struct ubi_volume **vols)
 {
 	struct ubi_full_leb *fleb;
-	LIST_HEAD(full);
+	LIST_HEAD(found);
 	int i, err = 0;
 
 	spin_lock(&ubi->full_lock);
@@ -380,8 +380,6 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 		return err;
 
 	for (i = 0; i < ubi->lebs_per_cpeb;) {
-		bool retry = true;
-
 		spin_lock(&ubi->full_lock);
 		fleb = list_first_entry_or_null(&ubi->full,
 						struct ubi_full_leb, node);
@@ -390,65 +388,64 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 		if (!fleb) {
 			err = -EAGAIN;
 			goto err;
+		} else {
+			list_del_init(&fleb->node);
+			list_add_tail(&fleb->node, &found);
+			ubi->full_count--;
 		}
 
 		clebs[i] = fleb->desc;
 
 		err = leb_consolidate_lock(ubi, clebs[i].vol_id,
 					   clebs[i].lnum, i);
-		if (err)
+		if (err) {
+			spin_lock(&ubi->full_lock);
+			list_del(&fleb->node);
+			list_add_tail(&fleb->node, &ubi->full);
+			ubi->full_count++;
+			spin_unlock(&ubi->full_lock);
 			goto err;
+		}
 
 		spin_lock(&ubi->volumes_lock);
 		vols[i] = ubi->volumes[vol_id2idx(ubi, clebs[i].vol_id)];
 		spin_unlock(&ubi->volumes_lock);
 		/* volume vanished under us */
+		//TODO clarify/document when/why this can happen
 		if (!vols[i]) {
 			leb_write_unlock(ubi, clebs[i].vol_id, clebs[i].lnum);
 			spin_lock(&ubi->full_lock);
-			ubi->full_count--;
-			list_del(&fleb->node);
+			list_del_init(&fleb->node);
 			kfree(fleb);
 			spin_unlock(&ubi->full_lock);
-			continue;
-		}
-
-		spin_lock(&ubi->full_lock);
-		if (fleb == list_first_entry_or_null(&ubi->full,
-						     struct ubi_full_leb,
-						     node)) {
-			list_del(&fleb->node);
-			list_add_tail(&fleb->node, &full);
-			ubi->full_count--;
-			retry = false;
-		}
-		spin_unlock(&ubi->full_lock);
-
-		if (retry) {
-			leb_write_unlock(ubi, clebs[i].vol_id, clebs[i].lnum);
 			continue;
 		}
 
 		i++;
 	}
 
-
-	while(!list_empty(&full)) {
-		fleb = list_first_entry(&full, struct ubi_full_leb, node);
+	while(!list_empty(&found)) {
+		fleb = list_first_entry(&found, struct ubi_full_leb, node);
 		list_del(&fleb->node);
 		kfree(fleb);
+	}
+
+	if (i < ubi->lebs_per_cpeb - 1) {
+		return -EAGAIN;
 	}
 
 	return 0;
 
 err:
-	spin_lock(&ubi->full_lock);
-	list_splice(&full, &ubi->full);
-	ubi->full_count += i;
-	spin_unlock(&ubi->full_lock);
-
-	for (i--; i >= 0; i--)
-		leb_write_unlock(ubi, clebs[i].vol_id, clebs[i].lnum);
+	while(!list_empty(&found)) {
+		spin_lock(&ubi->full_lock);
+		fleb = list_first_entry(&found, struct ubi_full_leb, node);
+		list_del(&fleb->node);
+		list_add_tail(&fleb->node, &ubi->full);
+		ubi->full_count++;
+		spin_unlock(&ubi->full_lock);
+		leb_write_unlock(ubi, fleb->desc.vol_id, fleb->desc.lnum);
+	}
 
 	return err;
 }
@@ -1157,6 +1154,7 @@ retry:
 
 	ubi_assert(vol->eba_tbl[lnum] < 0);
 	vol->eba_tbl[lnum] = pnum;
+	vol->used_ebs = used_ebs; //XXX
 	up_read(&ubi->fm_eba_sem);
 
 	err = add_full_leb(ubi, vol_id, lnum);
@@ -1611,6 +1609,8 @@ static int consolidate_lebs(struct ubi_device *ubi)
 		goto err_free_mem;
 	}
 
+	mutex_lock(&ubi->conso_mutex);
+
 	err = find_consolidable_lebs(ubi, clebs, vols);
 	if (err)
 		goto err_free_mem;
@@ -1695,9 +1695,12 @@ static int consolidate_lebs(struct ubi_device *ubi)
 	up_read(&ubi->fm_eba_sem);
 	consolidation_unlock(ubi, clebs);
 
-	for (i = 0; i < ubi->lebs_per_cpeb; i++)
+	mutex_unlock(&ubi->conso_mutex);
+
+	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
 		ubi_wl_put_peb(ubi, clebs[i].vol_id, clebs[i].lnum,
 			       opnums[i], 0, true);
+	}
 
 	kfree(clebs);
 	kfree(opnums);
@@ -1721,6 +1724,7 @@ err_free_mem:
 	kfree(clebs);
 	kfree(opnums);
 	kfree(vols);
+	mutex_unlock(&ubi->conso_mutex);
 
 	return err;
 }
@@ -1902,6 +1906,7 @@ int ubi_eba_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 
 	spin_lock_init(&ubi->ltree_lock);
 	mutex_init(&ubi->alc_mutex);
+	mutex_init(&ubi->conso_mutex);
 	ubi->ltree = RB_ROOT;
 
 	spin_lock_init(&ubi->full_lock);
