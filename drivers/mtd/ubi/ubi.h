@@ -895,11 +895,46 @@ int ubi_eba_atomic_leb_change(struct ubi_device *ubi, struct ubi_volume *vol,
 			      int lnum, const void *buf, int len);
 int ubi_eba_copy_leb(struct ubi_device *ubi, int from, int to,
 		     struct ubi_vid_hdr *vid_hdr);
-void ubi_eba_consolidate(struct ubi_device *ubi);
 int ubi_eba_init(struct ubi_device *ubi, struct ubi_attach_info *ai);
 unsigned long long ubi_next_sqnum(struct ubi_device *ubi);
+int ubi_eba_leb_write_lock_nested(struct ubi_device *ubi, int vol_id, int lnum,
+				  int level);
+void ubi_eba_leb_write_unlock(struct ubi_device *ubi, int vol_id, int lnum);
 int self_check_eba(struct ubi_device *ubi, struct ubi_attach_info *ai_fastmap,
 		   struct ubi_attach_info *ai_scan);
+
+/* consolidate.c */
+#ifdef CONFIG_MTD_UBI_CONSOLIDATE
+bool ubi_conso_consolidation_needed(struct ubi_device *ubi);
+void ubi_conso_schedule(struct ubi_device *ubi);
+void ubi_eba_consolidate(struct ubi_device *ubi);
+void ubi_conso_remove_full_leb(struct ubi_device *ubi, int vol_id, int lnum);
+struct ubi_leb_desc *ubi_conso_get_consolidated(struct ubi_device *ubi,
+						int pnum);
+bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
+			      int vol_id, int lnum);
+int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum);
+#else
+static inline bool ubi_conso_consolidation_needed(struct ubi_device *ubi)
+{
+	return false;
+}
+static inline void ubi_conso_schedule(struct ubi_device *ubi) {}
+static inline void ubi_eba_consolidate(struct ubi_device *ubi) {}
+static inline void ubi_conso_remove_full_leb(struct ubi_device *ubi, int vol_id, int lnum) {}
+static inline struct ubi_leb_desc *ubi_conso_get_consolidated(struct ubi_device *ubi, int pnum)
+{
+	return NULL;
+}
+static inline bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum, int vol_id, int lnum)
+{
+	return false;
+}
+static inline int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum)
+{
+	return 0;
+}
+#endif
 
 /* wl.c */
 int ubi_wl_get_peb(struct ubi_device *ubi, bool producing);
@@ -1000,6 +1035,22 @@ static inline int ubiblock_remove(struct ubi_volume_info *vi)
 	return -ENOSYS;
 }
 #endif
+
+/**
+ * ubi_get_compat - get compatibility flags of a volume.
+ * @ubi: UBI device description object
+ * @vol_id: volume ID
+ *
+ * This function returns compatibility flags for an internal volume. User
+ * volumes have no compatibility flags, so %0 is returned.
+ */
+static inline int ubi_get_compat(const struct ubi_device *ubi, int vol_id)
+{
+	if (vol_id == UBI_LAYOUT_VOLUME_ID)
+		return UBI_LAYOUT_VOLUME_COMPAT;
+	return 0;
+}
+
 
 /*
  * ubi_for_each_free_peb - walk the UBI free RB tree.
