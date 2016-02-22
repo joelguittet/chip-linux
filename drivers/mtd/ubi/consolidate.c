@@ -130,8 +130,6 @@ static int consolidate_lebs(struct ubi_device *ubi)
 		goto err_free_mem;
 	}
 
-	mutex_lock(&ubi->conso_mutex);
-
 	err = find_consolidable_lebs(ubi, clebs, vols);
 	if (err)
 		goto err_free_mem;
@@ -216,8 +214,6 @@ static int consolidate_lebs(struct ubi_device *ubi)
 	up_read(&ubi->fm_eba_sem);
 	consolidation_unlock(ubi, clebs);
 
-	mutex_unlock(&ubi->conso_mutex);
-
 	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
 		ubi_wl_put_peb(ubi, clebs[i].vol_id, clebs[i].lnum,
 			       opnums[i], 0, true);
@@ -245,7 +241,6 @@ err_free_mem:
 	kfree(clebs);
 	kfree(opnums);
 	kfree(vols);
-	mutex_unlock(&ubi->conso_mutex);
 
 	return err;
 }

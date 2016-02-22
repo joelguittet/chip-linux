@@ -628,7 +628,6 @@ struct ubi_device {
 	int consolidation_pnum;
 	struct list_head consolidable;
 	struct mutex alc_mutex;
-	struct mutex conso_mutex;
 
 	/* Fastmap stuff */
 	int fm_disabled;

@@ -1502,7 +1502,6 @@ int ubi_eba_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 
 	spin_lock_init(&ubi->ltree_lock);
 	mutex_init(&ubi->alc_mutex);
-	mutex_init(&ubi->conso_mutex);
 	ubi->ltree = RB_ROOT;
 
 	spin_lock_init(&ubi->full_lock);
