@@ -381,7 +381,7 @@ int ubi_remove_volume(struct ubi_volume_desc *desc, int no_vtbl)
 	struct ubi_device *ubi = vol->ubi;
 	int i, err, vol_id = vol->vol_id, reserved_pebs;
 
-	ubi_msg(ubi, "remove device %d, volume %d", ubi->ubi_num, vol_id);
+	dbg_gen("remove device %d, volume %d", ubi->ubi_num, vol_id);
 	ubi_assert(desc->mode == UBI_EXCLUSIVE);
 	ubi_assert(vol == ubi->volumes[vol_id]);
 
