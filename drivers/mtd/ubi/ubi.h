@@ -509,7 +509,6 @@ struct ubi_work {
  * @global_sqnum: global sequence number
  * @ltree_lock: protects the lock tree and @global_sqnum
  * @ltree: the lock tree
- * @alc_mutex: serializes "atomic LEB change" operations
  *
  * @fm_disabled: non-zero if fastmap is disabled (default)
  * @fm: in-memory data structure of the currently used fastmap
@@ -627,7 +626,6 @@ struct ubi_device {
 	int consolidation_threshold;
 	int consolidation_pnum;
 	struct list_head consolidable;
-	struct mutex alc_mutex;
 
 	/* Fastmap stuff */
 	int fm_disabled;
