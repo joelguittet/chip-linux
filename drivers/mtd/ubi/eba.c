@@ -388,7 +388,7 @@ out_unlock:
 int ubi_eba_read_leb(struct ubi_device *ubi, struct ubi_volume *vol, int lnum,
 		     void *buf, int offset, int len, int check)
 {
-	int err, pnum, scrub = 0, vol_id = vol->vol_id, loffs = 0;
+	int err, pnum, scrub = 0, vol_id = vol->vol_id, loffs = 0, lpos = 0;
 	struct ubi_vid_hdr *vid_hdr;
 	uint32_t uninitialized_var(crc);
 	struct ubi_leb_desc *clebs;
@@ -420,9 +420,7 @@ int ubi_eba_read_leb(struct ubi_device *ubi, struct ubi_volume *vol, int lnum,
 
 	clebs = ubi_conso_get_consolidated(ubi, pnum);
 	if (clebs) {
-		int lpos;
-
-		for (lpos = 0; lpos < ubi->lebs_per_cpeb; lpos++) {
+		for (; lpos < ubi->lebs_per_cpeb; lpos++) {
 			if (clebs[lpos].vol_id == vol->vol_id &&
 			    clebs[lpos].lnum == lnum)
 				break;
@@ -436,13 +434,15 @@ int ubi_eba_read_leb(struct ubi_device *ubi, struct ubi_volume *vol, int lnum,
 
 retry:
 	if (check) {
+		int nvidh = ubi->lebs_per_cpeb;
+
 		vid_hdr = ubi_zalloc_vid_hdr(ubi, GFP_NOFS);
 		if (!vid_hdr) {
 			err = -ENOMEM;
 			goto out_unlock;
 		}
 
-		err = ubi_io_read_vid_hdr(ubi, pnum, vid_hdr, 1);
+		err = ubi_io_read_vid_hdrs(ubi, pnum, vid_hdr, &nvidh, 1);
 		if (err && err != UBI_IO_BITFLIPS) {
 			if (err > 0) {
 				/*
@@ -467,10 +467,10 @@ retry:
 		} else if (err == UBI_IO_BITFLIPS)
 			scrub = 1;
 
-		ubi_assert(lnum < be32_to_cpu(vid_hdr->used_ebs));
-		ubi_assert(len == be32_to_cpu(vid_hdr->data_size));
+		ubi_assert(lnum < be32_to_cpu(vid_hdr[lpos].used_ebs));
+		ubi_assert(len == be32_to_cpu(vid_hdr[lpos].data_size));
 
-		crc = be32_to_cpu(vid_hdr->data_crc);
+		crc = be32_to_cpu(vid_hdr[lpos].data_crc);
 		ubi_free_vid_hdr(ubi, vid_hdr);
 	}
 
