@@ -33,9 +33,6 @@ void ubi_schedule_work(struct ubi_device *ubi, struct ubi_work *wrk)
 
 	mutex_lock(&ubi->work_mutex);
 	spin_lock(&ubi->wl_lock);
-	INIT_LIST_HEAD(&wrk->list);
-	kref_init(&wrk->ref);
-	init_completion(&wrk->comp);
 	list_add_tail(&wrk->list, &ubi->works);
 	ubi_assert(ubi->works_count >= 0);
 	ubi->works_count += 1;
@@ -54,6 +51,8 @@ struct ubi_work *ubi_alloc_work(struct ubi_device *ubi)
 		return NULL;
 
 	INIT_LIST_HEAD(&wrk->list);
+	kref_init(&wrk->ref);
+	init_completion(&wrk->comp);
 
 	return wrk;
 }
