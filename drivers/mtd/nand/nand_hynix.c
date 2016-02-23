@@ -137,7 +137,7 @@ static int h27ucg8t2a_init(struct mtd_info *mtd, const uint8_t *id)
 {
 	struct nand_chip *chip = mtd->priv;
 	struct hynix_nand *hynix;
-	int ret;
+	int ret = 0;
 
 	hynix = kzalloc(sizeof(*hynix), GFP_KERNEL);
 	if (!hynix)
@@ -314,7 +314,7 @@ static int h27q_init(struct mtd_info *mtd, const uint8_t *id)
 {
 	struct nand_chip *chip = mtd->priv;
 	struct hynix_nand *hynix;
-	int i, ret;
+	int i, ret = 0;
 
 	hynix = kzalloc(sizeof(*hynix), GFP_KERNEL);
 	if (!hynix)
