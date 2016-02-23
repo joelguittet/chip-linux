@@ -560,7 +560,7 @@ static int do_sync_erase(struct ubi_device *ubi, struct ubi_wl_entry *e,
 
 	dbg_wl("sync erase of PEB %i", e->pnum);
 
-	wl_wrk = kmalloc(sizeof(struct ubi_work), GFP_NOFS);
+	wl_wrk = ubi_alloc_work(ubi);
 	if (!wl_wrk)
 		return -ENOMEM;
 

@@ -286,7 +286,7 @@ bool ubi_conso_consolidation_needed(struct ubi_device *ubi)
 
 void ubi_conso_schedule(struct ubi_device *ubi)
 {
-	struct ubi_work *wrk = kzalloc(sizeof(*wrk), GFP_KERNEL);
+	struct ubi_work *wrk = ubi_alloc_work(ubi);
 
 	if (wrk) {
 		wrk->func = &consolidation_worker;
