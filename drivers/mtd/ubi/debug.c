@@ -281,6 +281,8 @@ static ssize_t dfs_file_read(struct file *file, char __user *user_buf,
 		val = d->emulate_bitflips;
 	else if (dent == d->dfs_emulate_io_failures)
 		val = d->emulate_io_failures;
+	else if (dent == d->dfs_force_leb_consolidation)
+		val = d->force_leb_consolidation;
 	else if (dent == d->dfs_emulate_power_cut) {
 		snprintf(buf, sizeof(buf), "%u\n", d->emulate_power_cut);
 		count = simple_read_from_buffer(user_buf, count, ppos,
@@ -373,6 +375,8 @@ static ssize_t dfs_file_write(struct file *file, const char __user *user_buf,
 		d->emulate_bitflips = val;
 	else if (dent == d->dfs_emulate_io_failures)
 		d->emulate_io_failures = val;
+	else if (dent == d->dfs_force_leb_consolidation)
+		d->force_leb_consolidation = val;
 	else
 		count = -EINVAL;
 
@@ -479,6 +483,12 @@ int ubi_debugfs_init_dev(struct ubi_device *ubi)
 		goto out_remove;
 	d->dfs_power_cut_max = dent;
 
+	fname = "force_leb_consolidation";
+	dent = debugfs_create_file(fname, S_IWUSR, d->dfs_dir, (void *)ubi_num,
+				   &dfs_fops);
+	if (IS_ERR_OR_NULL(dent))
+		goto out_remove;
+	d->dfs_force_leb_consolidation = dent;
 	return 0;
 
 out_remove:
