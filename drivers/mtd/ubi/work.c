@@ -18,6 +18,18 @@ static bool work_suspended(struct ubi_device *ubi)
 	return ubi->thread_suspended || !ubi->thread_enabled;
 }
 
+/**
+ * destroy_work - destroy an UBI work.
+ * @ref: kref object
+ *
+ * This function is called by kref upon the last reference is gone.
+ */
+static void destroy_work(struct kref *ref)
+{
+	struct ubi_work *wrk = container_of(ref, struct ubi_work, ref);
+
+	kfree(wrk);
+}
 
 /**
  * ubi_schedule_work - schedule a work.
@@ -42,6 +54,23 @@ void ubi_schedule_work(struct ubi_device *ubi, struct ubi_work *wrk)
 	mutex_unlock(&ubi->work_mutex);
 }
 
+int ubi_schedule_work_sync(struct ubi_device *ubi, struct ubi_work *wrk)
+{
+	int ret;
+
+	kref_get(&wrk->ref);
+
+	ubi_schedule_work(ubi, wrk);
+	wait_for_completion(&wrk->comp);
+
+	spin_lock(&ubi->wl_lock);
+	ret = wrk->ret;
+	kref_put(&wrk->ref, destroy_work);
+	spin_unlock(&ubi->wl_lock);
+
+	return ret;
+}
+
 struct ubi_work *ubi_alloc_work(struct ubi_device *ubi)
 {
 	struct ubi_work *wrk;
@@ -55,19 +84,6 @@ struct ubi_work *ubi_alloc_work(struct ubi_device *ubi)
 	init_completion(&wrk->comp);
 
 	return wrk;
-}
-
-/**
- * destroy_work - destroy an UBI work.
- * @ref: kref object
- *
- * This function is called by kref upon the last reference is gone.
- */
-static void destroy_work(struct kref *ref)
-{
-	struct ubi_work *wrk = container_of(ref, struct ubi_work, ref);
-
-	kfree(wrk);
 }
 
 static void shutdown_work(struct ubi_device *ubi, int error)
