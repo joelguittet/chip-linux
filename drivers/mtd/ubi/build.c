@@ -366,7 +366,9 @@ static ssize_t dev_attribute_show(struct device *dev,
 	if (attr == &dev_eraseblock_size)
 		ret = sprintf(buf, "%d\n", ubi->leb_size);
 	else if (attr == &dev_avail_eraseblocks)
-		ret = sprintf(buf, "%d\n", ubi->avail_pebs);
+		ret = sprintf(buf, "%d\n",
+			      ubi->avail_pebs *
+			      ubi->lebs_per_cpeb);
 	else if (attr == &dev_total_eraseblocks)
 		ret = sprintf(buf, "%d\n", ubi->good_peb_count);
 	else if (attr == &dev_volumes_count)
@@ -645,7 +647,10 @@ static int io_init(struct ubi_device *ubi, int max_beb_per1024)
 	 * physical eraseblocks maximum.
 	 */
 
-	ubi->peb_size   = ubi->mtd->erasesize;
+	ubi->consolidated_peb_size = ubi->mtd->erasesize;
+	ubi->peb_size   = ubi->consolidated_peb_size /
+			  mtd_pairing_groups_per_eb(ubi->mtd);
+	ubi->lebs_per_cpeb = mtd_pairing_groups_per_eb(ubi->mtd);
 	ubi->peb_count  = mtd_div_by_eb(ubi->mtd->size, ubi->mtd);
 	ubi->flash_size = ubi->mtd->size;
 
@@ -789,7 +794,7 @@ static int autoresize(struct ubi_device *ubi, int vol_id)
 {
 	struct ubi_volume_desc desc;
 	struct ubi_volume *vol = ubi->volumes[vol_id];
-	int err, old_reserved_pebs = vol->reserved_pebs;
+	int err, old_reserved_lebs = vol->reserved_lebs;
 
 	if (ubi->ro_mode) {
 		ubi_warn(ubi, "skip auto-resize because of R/O mode");
@@ -816,9 +821,11 @@ static int autoresize(struct ubi_device *ubi, int vol_id)
 			ubi_err(ubi, "cannot clean auto-resize flag for volume %d",
 				vol_id);
 	} else {
+		int avail_lebs = ubi->avail_pebs *
+				 ubi->lebs_per_cpeb;
+
 		desc.vol = vol;
-		err = ubi_resize_volume(&desc,
-					old_reserved_pebs + ubi->avail_pebs);
+		err = ubi_resize_volume(&desc, old_reserved_lebs + avail_lebs);
 		if (err)
 			ubi_err(ubi, "cannot auto-resize volume %d",
 				vol_id);
@@ -828,7 +835,7 @@ static int autoresize(struct ubi_device *ubi, int vol_id)
 		return err;
 
 	ubi_msg(ubi, "volume %d (\"%s\") re-sized from %d to %d LEBs",
-		vol_id, vol->name, old_reserved_pebs, vol->reserved_pebs);
+		vol_id, vol->name, old_reserved_lebs, vol->reserved_lebs);
 	return 0;
 }
 
@@ -869,7 +876,7 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 	for (i = 0; i < UBI_MAX_DEVICES; i++) {
 		ubi = ubi_devices[i];
 		if (ubi && mtd->index == ubi->mtd->index) {
-			ubi_err(ubi, "mtd%d is already attached to ubi%d",
+			pr_err("mtd%d is already attached to ubi%d\n",
 				mtd->index, i);
 			return -EEXIST;
 		}
@@ -884,7 +891,7 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 	 * no sense to attach emulated MTD devices, so we prohibit this.
 	 */
 	if (mtd->type == MTD_UBIVOLUME) {
-		ubi_err(ubi, "refuse attaching mtd%d - it is already emulated on top of UBI",
+		pr_err("refuse attaching mtd%d - it is already emulated on top of UBI\n",
 			mtd->index);
 		return -EINVAL;
 	}
@@ -895,7 +902,7 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 			if (!ubi_devices[ubi_num])
 				break;
 		if (ubi_num == UBI_MAX_DEVICES) {
-			ubi_err(ubi, "only %d UBI devices may be created",
+			pr_err("only %d UBI devices may be created\n",
 				UBI_MAX_DEVICES);
 			return -ENFILE;
 		}
@@ -905,7 +912,7 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 
 		/* Make sure ubi_num is not busy */
 		if (ubi_devices[ubi_num]) {
-			ubi_err(ubi, "already exists");
+			pr_err("already exists\n");
 			return -EEXIST;
 		}
 	}
@@ -964,7 +971,7 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 		goto out_free;
 
 	err = -ENOMEM;
-	ubi->peb_buf = vmalloc(ubi->peb_size);
+	ubi->peb_buf = vmalloc(ubi->consolidated_peb_size);
 	if (!ubi->peb_buf)
 		goto out_free;
 
@@ -974,6 +981,9 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 	if (!ubi->fm_buf)
 		goto out_free;
 #endif
+	ubi->thread_enabled = 1;
+	ubi->thread_suspended = 1;
+
 	err = ubi_attach(ubi, 0);
 	if (err) {
 		ubi_err(ubi, "failed to attach mtd%d, error %d",
@@ -1021,13 +1031,14 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 		ubi->image_seq);
 	ubi_msg(ubi, "available PEBs: %d, total reserved PEBs: %d, PEBs reserved for bad PEB handling: %d",
 		ubi->avail_pebs, ubi->rsvd_pebs, ubi->beb_rsvd_pebs);
+	ubi_msg(ubi, "LEBs per PEB: %d", ubi->lebs_per_cpeb);
 
 	/*
 	 * The below lock makes sure we do not race with 'ubi_thread()' which
 	 * checks @ubi->thread_enabled. Otherwise we may fail to wake it up.
 	 */
 	spin_lock(&ubi->wl_lock);
-	ubi->thread_enabled = 1;
+	ubi->thread_suspended = 0;
 	wake_up_process(ubi->bgt_thread);
 	spin_unlock(&ubi->wl_lock);
 
@@ -1209,7 +1220,7 @@ static int __init ubi_init(void)
 	BUILD_BUG_ON(sizeof(struct ubi_vid_hdr) != 64);
 
 	if (mtd_devs > UBI_MAX_DEVICES) {
-		pr_err("UBI error: too many MTD devices, maximum is %d",
+		pr_err("UBI error: too many MTD devices, maximum is %d\n",
 		       UBI_MAX_DEVICES);
 		return -EINVAL;
 	}
@@ -1221,7 +1232,7 @@ static int __init ubi_init(void)
 
 	err = misc_register(&ubi_ctrl_cdev);
 	if (err) {
-		pr_err("UBI error: cannot register device");
+		pr_err("UBI error: cannot register device\n");
 		goto out;
 	}
 
@@ -1248,7 +1259,7 @@ static int __init ubi_init(void)
 		mtd = open_mtd_device(p->name);
 		if (IS_ERR(mtd)) {
 			err = PTR_ERR(mtd);
-			pr_err("UBI error: cannot open mtd %s, error %d",
+			pr_err("UBI error: cannot open mtd %s, error %d\n",
 			       p->name, err);
 			/* See comment below re-ubi_is_module(). */
 			if (ubi_is_module())
@@ -1261,7 +1272,7 @@ static int __init ubi_init(void)
 					 p->vid_hdr_offs, p->max_beb_per1024);
 		mutex_unlock(&ubi_devices_mutex);
 		if (err < 0) {
-			pr_err("UBI error: cannot attach mtd%d",
+			pr_err("UBI error: cannot attach mtd%d\n",
 			       mtd->index);
 			put_mtd_device(mtd);
 
@@ -1285,7 +1296,7 @@ static int __init ubi_init(void)
 
 	err = ubiblock_init();
 	if (err) {
-		pr_err("UBI error: block: cannot initialize, error %d", err);
+		pr_err("UBI error: block: cannot initialize, error %d\n", err);
 
 		/* See comment above re-ubi_is_module(). */
 		if (ubi_is_module())
@@ -1308,7 +1319,7 @@ out_dev_unreg:
 	misc_deregister(&ubi_ctrl_cdev);
 out:
 	class_unregister(&ubi_class);
-	pr_err("UBI error: cannot initialize UBI, error %d", err);
+	pr_err("UBI error: cannot initialize UBI, error %d\n", err);
 	return err;
 }
 late_initcall(ubi_init);
@@ -1436,7 +1447,7 @@ static int __init ubi_mtd_param_parse(const char *val, struct kernel_param *kp)
 		int err = kstrtoint(token, 10, &p->max_beb_per1024);
 
 		if (err) {
-			pr_err("UBI error: bad value for max_beb_per1024 parameter: %s",
+			pr_err("UBI error: bad value for max_beb_per1024 parameter: %s\n",
 			       token);
 			return -EINVAL;
 		}
@@ -1447,7 +1458,7 @@ static int __init ubi_mtd_param_parse(const char *val, struct kernel_param *kp)
 		int err = kstrtoint(token, 10, &p->ubi_num);
 
 		if (err) {
-			pr_err("UBI error: bad value for ubi_num parameter: %s",
+			pr_err("UBI error: bad value for ubi_num parameter: %s\n",
 			       token);
 			return -EINVAL;
 		}

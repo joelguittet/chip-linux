@@ -103,4 +103,8 @@ config MTD_UBI_BLOCK
 
 	   If in doubt, say "N".
 
+config MTD_UBI_CONSOLIDATE
+	bool "LEB consolidation support"
+	default n
+
 endif # MTD_UBI

@@ -180,16 +180,16 @@ void ubi_refill_pools(struct ubi_device *ubi)
  * disabled. Returns zero in case of success and a negative error code in case
  * of failure.
  */
+
+#error call ubi_eba_consolidate
 static int produce_free_peb(struct ubi_device *ubi)
 {
-	int err;
-
-	while (!ubi->free.rb_node && ubi->works_count) {
+	while (!ubi->free.rb_node) {
 		dbg_wl("do one work synchronously");
-		err = do_work(ubi);
-
-		if (err)
-			return err;
+		if (!wl_do_one_work_sync(ubi)) {
+			/* Nothing to do. We have to give up. */
+			return -ENOSPC;
+		}
 	}
 
 	return 0;
@@ -203,7 +203,7 @@ static int produce_free_peb(struct ubi_device *ubi)
  * negative error code in case of failure.
  * Returns with ubi->fm_eba_sem held in read mode!
  */
-int ubi_wl_get_peb(struct ubi_device *ubi)
+int ubi_wl_get_peb(struct ubi_device *ubi, bool nested)
 {
 	int ret, retried = 0;
 	struct ubi_fm_pool *pool = &ubi->fm_pool;
@@ -212,6 +212,15 @@ int ubi_wl_get_peb(struct ubi_device *ubi)
 again:
 	down_read(&ubi->fm_eba_sem);
 	spin_lock(&ubi->wl_lock);
+
+	if (nested) {
+		if (pool->used == pool->size) {
+			ret = -ENOSPC;
+			goto out_unlock;
+		}
+
+		goto out_get_peb;
+	}
 
 	/* We check here also for the WL pool because at this point we can
 	 * refill the WL pool synchronous. */
@@ -245,9 +254,11 @@ again:
 		goto again;
 	}
 
+out_get_peb:
 	ubi_assert(pool->used < pool->size);
 	ret = pool->pebs[pool->used++];
 	prot_queue_add(ubi, ubi->lookuptbl[ret]);
+out_unlock:
 	spin_unlock(&ubi->wl_lock);
 out:
 	return ret;
@@ -293,7 +304,7 @@ int ubi_ensure_anchor_pebs(struct ubi_device *ubi)
 	ubi->wl_scheduled = 1;
 	spin_unlock(&ubi->wl_lock);
 
-	wrk = kmalloc(sizeof(struct ubi_work), GFP_NOFS);
+	wrk = ubi_alloc_work(ubi);
 	if (!wrk) {
 		spin_lock(&ubi->wl_lock);
 		ubi->wl_scheduled = 0;
@@ -344,7 +355,7 @@ int ubi_wl_put_fm_peb(struct ubi_device *ubi, struct ubi_wl_entry *fm_e,
 	spin_unlock(&ubi->wl_lock);
 
 	vol_id = lnum ? UBI_FM_DATA_VOLUME_ID : UBI_FM_SB_VOLUME_ID;
-	return schedule_erase(ubi, e, vol_id, lnum, torture);
+	return schedule_erase(ubi, e, vol_id, lnum, torture, false);
 }
 
 /**
