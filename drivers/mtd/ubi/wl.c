@@ -685,6 +685,13 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 	ubi->move_to = e2;
 	spin_unlock(&ubi->wl_lock);
 
+	//XXX :-( :-( :-(
+	if (ubi->consolidated && ubi->consolidated[e1->pnum]) {
+		ubi_err(ubi, "TODO: Implement wear leveling for consolidated LEBs!");
+		protect = 1;
+		goto out_not_moved;
+	}
+
 	/*
 	 * Now we are going to copy physical eraseblock @e1->pnum to @e2->pnum.
 	 * We so far do not know which logical eraseblock our physical
