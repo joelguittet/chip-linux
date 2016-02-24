@@ -170,7 +170,7 @@ int ubi_vtbl_rename_volumes(struct ubi_device *ubi,
 static int vtbl_check(const struct ubi_device *ubi,
 		      const struct ubi_vtbl_record *vtbl)
 {
-	int i, n, reserved_pebs, alignment, data_pad, vol_type, name_len;
+	int i, n, reserved_lebs, alignment, data_pad, vol_type, name_len;
 	int upd_marker, err;
 	uint32_t crc;
 	const char *name;
@@ -178,7 +178,7 @@ static int vtbl_check(const struct ubi_device *ubi,
 	for (i = 0; i < ubi->vtbl_slots; i++) {
 		cond_resched();
 
-		reserved_pebs = be32_to_cpu(vtbl[i].reserved_lebs);
+		reserved_lebs = be32_to_cpu(vtbl[i].reserved_lebs);
 		alignment = be32_to_cpu(vtbl[i].alignment);
 		data_pad = be32_to_cpu(vtbl[i].data_pad);
 		upd_marker = vtbl[i].upd_marker;
@@ -194,7 +194,7 @@ static int vtbl_check(const struct ubi_device *ubi,
 			return 1;
 		}
 
-		if (reserved_pebs == 0) {
+		if (reserved_lebs == 0) {
 			if (memcmp(&vtbl[i], &empty_vtbl_record,
 						UBI_VTBL_RECORD_SIZE)) {
 				err = 2;
@@ -203,7 +203,7 @@ static int vtbl_check(const struct ubi_device *ubi,
 			continue;
 		}
 
-		if (reserved_pebs < 0 || alignment < 0 || data_pad < 0 ||
+		if (reserved_lebs < 0 || alignment < 0 || data_pad < 0 ||
 		    name_len < 0) {
 			err = 3;
 			goto bad;
@@ -237,9 +237,10 @@ static int vtbl_check(const struct ubi_device *ubi,
 			goto bad;
 		}
 
-		if (reserved_pebs > ubi->good_peb_count) {
-			ubi_err(ubi, "too large reserved_pebs %d, good PEBs %d",
-				reserved_pebs, ubi->good_peb_count);
+		reserved_lebs = DIV_ROUND_UP(reserved_lebs, ubi->lebs_per_cpeb);
+		if (reserved_lebs > ubi->good_peb_count) {
+			ubi_err(ubi, "too large reserved_lebs %d, good PEBs %d",
+				reserved_lebs, ubi->good_peb_count);
 			err = 9;
 			goto bad;
 		}
@@ -421,8 +422,15 @@ static struct ubi_vtbl_record *process_lvol(struct ubi_device *ubi,
 			goto out_free;
 		}
 
-		err = ubi_io_read_data(ubi, leb[aeb->desc.lnum],
-				       aeb->peb->pnum, 0, ubi->vtbl_size);
+		if (!aeb->peb->consolidated) {
+			err = ubi_io_read_data(ubi, leb[aeb->desc.lnum],
+				aeb->peb->pnum, 0, ubi->vtbl_size);
+		} else {
+			err = ubi_io_raw_read(ubi, leb[aeb->desc.lnum],
+				aeb->peb->pnum, ubi->leb_start + (aeb->peb_pos * ubi->leb_size),
+				ubi->vtbl_size);
+		}
+
 		if (err == UBI_IO_BITFLIPS || mtd_is_eccerr(err))
 			/*
 			 * Scrub the PEB later. Note, -EBADMSG indicates an
@@ -539,7 +547,7 @@ static int init_volumes(struct ubi_device *ubi,
 			const struct ubi_attach_info *ai,
 			const struct ubi_vtbl_record *vtbl)
 {
-	int i, reserved_pebs = 0;
+	int i, reserved_lebs = 0;
 	struct ubi_ainf_volume *av;
 	struct ubi_volume *vol;
 
@@ -581,7 +589,7 @@ static int init_volumes(struct ubi_device *ubi,
 		ubi->volumes[i] = vol;
 		ubi->vol_count += 1;
 		vol->ubi = ubi;
-		reserved_pebs += vol->reserved_lebs;
+		reserved_lebs += vol->reserved_lebs;
 
 		/*
 		 * In case of dynamic volume UBI knows nothing about how many
@@ -647,20 +655,21 @@ static int init_volumes(struct ubi_device *ubi,
 
 	ubi_assert(!ubi->volumes[i]);
 	ubi->volumes[vol_id2idx(ubi, vol->vol_id)] = vol;
-	reserved_pebs += vol->reserved_lebs;
+	reserved_lebs += vol->reserved_lebs;
 	ubi->vol_count += 1;
 	vol->ubi = ubi;
 
-	if (reserved_pebs > ubi->avail_pebs) {
+	reserved_lebs = DIV_ROUND_UP(reserved_lebs, ubi->lebs_per_cpeb);
+	if (reserved_lebs > ubi->avail_pebs) {
 		ubi_err(ubi, "not enough PEBs, required %d, available %d",
-			reserved_pebs, ubi->avail_pebs);
+			reserved_lebs, ubi->avail_pebs);
 		if (ubi->corr_peb_count)
 			ubi_err(ubi, "%d PEBs are corrupted and not used",
 				ubi->corr_peb_count);
 		return -ENOSPC;
 	}
-	ubi->rsvd_pebs += reserved_pebs;
-	ubi->avail_pebs -= reserved_pebs;
+	ubi->rsvd_pebs += reserved_lebs;
+	ubi->avail_pebs -= reserved_lebs;
 
 	return 0;
 }
