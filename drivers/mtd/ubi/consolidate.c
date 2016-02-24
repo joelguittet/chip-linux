@@ -134,6 +134,8 @@ static int consolidate_lebs(struct ubi_device *ubi)
 	if (err)
 		goto err_free_mem;
 
+	mutex_lock(&ubi->buf_mutex);
+
 	pnum = ubi_wl_get_peb(ubi, true);
 	if (pnum < 0) {
 		err = pnum;
@@ -141,7 +143,6 @@ static int consolidate_lebs(struct ubi_device *ubi)
 		goto err_unlock_lebs;
 	}
 
-	mutex_lock(&ubi->buf_mutex);
 	memset(ubi->peb_buf, 0, ubi->peb_size);
 	vid_hdrs = ubi->peb_buf + ubi->vid_hdr_aloffset + ubi->vid_hdr_shift;
 
@@ -156,8 +157,8 @@ static int consolidate_lebs(struct ubi_device *ubi)
 		ubi_assert(!ubi->consolidated[spnum]);
 
 		err = ubi_io_read_data(ubi, buf, spnum, 0, ubi->leb_size);
-		if (err)
-			goto err_unlock_buf;
+		if (err && err != UBI_IO_BITFLIPS)
+			goto err_unlock_fm_eba;
 
 		if (vol->vol_type == UBI_DYNAMIC_VOLUME) {
 			data_size = ubi->leb_size - clebs[i].data_pad;
@@ -195,13 +196,12 @@ static int consolidate_lebs(struct ubi_device *ubi)
 	if (err) {
 		ubi_warn(ubi, "failed to write VID headers to PEB %d",
 			 pnum);
-		goto err_unlock_buf;
+		goto err_unlock_lebs;
 	}
 
 	err = ubi_io_raw_write(ubi, ubi->peb_buf + ubi->leb_start,
 			       pnum, ubi->leb_start,
 			       ubi->consolidated_peb_size - ubi->leb_start);
-	mutex_unlock(&ubi->buf_mutex);
 	if (err) {
 		ubi_warn(ubi, "failed to write %d bytes of data to PEB %d",
 			 ubi->consolidated_peb_size - ubi->leb_start, pnum);
@@ -219,6 +219,7 @@ static int consolidate_lebs(struct ubi_device *ubi)
 	}
 
 	up_read(&ubi->fm_eba_sem);
+	mutex_unlock(&ubi->buf_mutex);
 	consolidation_unlock(ubi, clebs);
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
@@ -232,9 +233,8 @@ static int consolidate_lebs(struct ubi_device *ubi)
 
 	return 0;
 
-err_unlock_buf:
-	mutex_unlock(&ubi->buf_mutex);
 err_unlock_fm_eba:
+	mutex_unlock(&ubi->buf_mutex);
 	up_read(&ubi->fm_eba_sem);
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++)
