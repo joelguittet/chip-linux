@@ -148,7 +148,7 @@ static int consolidate_lebs(struct ubi_device *ubi)
 	vid_hdrs = ubi->peb_buf + ubi->vid_hdr_aloffset + ubi->vid_hdr_shift;
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
-		int vol_id = clebs[i].vol_id, lnum = clebs[i].lnum;
+		int vol_id = clebs[i].vol_id, lnum = clebs[i].lnum, lpos = 0;
 		void *buf = ubi->peb_buf + offset;
 		struct ubi_volume *vol = vols[i];
 		int spnum = vol->eba_tbl[lnum];
@@ -157,12 +157,12 @@ static int consolidate_lebs(struct ubi_device *ubi)
 
 		ubi_assert(!ubi->consolidated[spnum]);
 
-		err = ubi_io_read_data(ubi, buf, spnum, 0, ubi->leb_size);
+		err = ubi_io_read(ubi, buf, spnum, ubi->leb_start + (lpos * ubi->leb_size), ubi->leb_size);
 		if (err && err != UBI_IO_BITFLIPS)
 			goto err_unlock_fm_eba;
 
 		if (vol->vol_type == UBI_DYNAMIC_VOLUME) {
-			data_size = ubi->leb_size - clebs[i].data_pad;
+			data_size = ubi->leb_size - vol->data_pad;
 		} else {
 			data_size = clebs[i].data_size;
 		}
@@ -239,7 +239,7 @@ err_unlock_fm_eba:
 	up_read(&ubi->fm_eba_sem);
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++)
-		ubi_coso_add_full_leb(ubi, clebs[i].vol_id, clebs[i].lnum, clebs[i].data_size, clebs[i].data_pad);
+		ubi_coso_add_full_leb(ubi, clebs[i].vol_id, clebs[i].lnum, clebs[i].data_size);
 
 	ubi_wl_put_peb(ubi, UBI_UNKNOWN, UBI_UNKNOWN, pnum, 0, true);
 err_unlock_lebs:
@@ -381,7 +381,7 @@ bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
 	return true;
 }
 
-int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum, int data_size, int data_pad)
+int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum, int data_size)
 {
 	struct ubi_full_leb *fleb;
 
@@ -399,7 +399,6 @@ int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum, int data
 	fleb->desc.vol_id = vol_id;
 	fleb->desc.lnum = lnum;
 	fleb->desc.data_size = data_size;
-	fleb->desc.data_pad = data_pad;
 
 	spin_lock(&ubi->full_lock);
 	list_add_tail(&fleb->node, &ubi->full);
