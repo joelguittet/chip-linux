@@ -163,13 +163,26 @@ static int consolidate_lebs(struct ubi_device *ubi)
 
 		if (vol->vol_type == UBI_DYNAMIC_VOLUME) {
 			data_size = ubi->leb_size - vol->data_pad;
-		} else {
-			data_size = clebs[i].data_size;
-		}
-
-		if (vol->vol_type == UBI_DYNAMIC_VOLUME) {
 			vid_hdrs[i].vol_type = UBI_VID_DYNAMIC;
 		} else {
+			int nvidh = ubi->lebs_per_cpeb;
+			struct ubi_vid_hdr *vh;
+
+			vh = ubi_zalloc_vid_hdr(ubi, GFP_NOFS);
+			if (!vh) {
+				err = -ENOMEM;
+				goto err_unlock_fm_eba;
+			}
+
+			err = ubi_io_read_vid_hdrs(ubi, spnum, vh, &nvidh, 0);
+			if (err && err != UBI_IO_BITFLIPS) {
+				ubi_free_vid_hdr(ubi, vh);
+				goto err_unlock_fm_eba;
+			}
+
+			ubi_free_vid_hdr(ubi, vh);
+
+			data_size = be32_to_cpu(vh[lpos].data_size);
 			vid_hdrs[i].vol_type = UBI_VID_STATIC;
 			vid_hdrs[i].used_ebs = cpu_to_be32(vol->used_ebs);
 		}
@@ -224,6 +237,7 @@ static int consolidate_lebs(struct ubi_device *ubi)
 	consolidation_unlock(ubi, clebs);
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
+		//TODO set torture if needed
 		ubi_wl_put_peb(ubi, clebs[i].vol_id, clebs[i].lnum,
 			       opnums[i], 0, true);
 	}
@@ -239,7 +253,7 @@ err_unlock_fm_eba:
 	up_read(&ubi->fm_eba_sem);
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++)
-		ubi_coso_add_full_leb(ubi, clebs[i].vol_id, clebs[i].lnum, clebs[i].data_size);
+		ubi_coso_add_full_leb(ubi, clebs[i].vol_id, clebs[i].lnum);
 
 	ubi_wl_put_peb(ubi, UBI_UNKNOWN, UBI_UNKNOWN, pnum, 0, true);
 err_unlock_lebs:
@@ -381,7 +395,7 @@ bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
 	return true;
 }
 
-int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum, int data_size)
+int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum)
 {
 	struct ubi_full_leb *fleb;
 
@@ -398,7 +412,6 @@ int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum, int data
 
 	fleb->desc.vol_id = vol_id;
 	fleb->desc.lnum = lnum;
-	fleb->desc.data_size = data_size;
 
 	spin_lock(&ubi->full_lock);
 	list_add_tail(&fleb->node, &ubi->full);
