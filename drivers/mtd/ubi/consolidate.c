@@ -60,6 +60,7 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 		/* volume vanished under us */
 		//TODO clarify/document when/why this can happen
 		if (!vols[i]) {
+			ubi_assert(0);
 			ubi_eba_leb_write_unlock(ubi, clebs[i].vol_id, clebs[i].lnum);
 			spin_lock(&ubi->full_lock);
 			list_del_init(&fleb->node);
