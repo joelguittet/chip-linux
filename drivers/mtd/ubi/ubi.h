@@ -177,12 +177,14 @@ enum {
  * struct ubi_leb_desc - UBI logical eraseblock description.
  * @vol_id: volume ID of the locked logical eraseblock
  * @lnum: locked logical eraseblock number
+ * @lpos: n'th LEB within this PEB, starting at 0
  *
  * This data structure is used in describe a logical eraseblock.
  */
 struct ubi_leb_desc {
 	int vol_id;
 	int lnum;
+	int lpos;
 };
 
 /**
@@ -924,7 +926,7 @@ struct ubi_leb_desc *ubi_conso_get_consolidated(struct ubi_device *ubi,
 						int pnum);
 bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
 			      int vol_id, int lnum);
-int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum);
+int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum, int lpos);
 int ubi_conso_init(struct ubi_device *ubi);
 void ubi_conso_close(struct ubi_device *ubi);
 int ubi_conso_sync(struct ubi_device *ubi);
