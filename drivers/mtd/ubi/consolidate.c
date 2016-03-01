@@ -102,7 +102,7 @@ static int consolidate_lebs(struct ubi_device *ubi)
 {
 	int i, pnum, offset = ubi->leb_start, err = 0;
 	struct ubi_vid_hdr *vid_hdrs;
-	struct ubi_leb_desc *clebs = NULL, *dup_clebs = NULL;
+	struct ubi_leb_desc *clebs = NULL, *new_clebs = NULL;
 	struct ubi_volume **vols = NULL;
 	int *opnums = NULL;
 
@@ -125,8 +125,8 @@ static int consolidate_lebs(struct ubi_device *ubi)
 		goto err_free_mem;
 	}
 
-	dup_clebs = kzalloc(sizeof(*clebs) * ubi->lebs_per_cpeb, GFP_KERNEL);
-	if (!dup_clebs) {
+	new_clebs = kzalloc(sizeof(*clebs) * ubi->lebs_per_cpeb, GFP_KERNEL);
+	if (!new_clebs) {
 		err = -ENOMEM;
 		goto err_free_mem;
 	}
@@ -134,6 +134,8 @@ static int consolidate_lebs(struct ubi_device *ubi)
 	err = find_consolidable_lebs(ubi, clebs, vols);
 	if (err)
 		goto err_free_mem;
+
+	memcpy(new_clebs, clebs, sizeof(*clebs) * ubi->lebs_per_cpeb);
 
 	mutex_lock(&ubi->buf_mutex);
 
@@ -150,16 +152,39 @@ static int consolidate_lebs(struct ubi_device *ubi)
 	vid_hdrs = ubi->peb_buf + ubi->vid_hdr_aloffset + ubi->vid_hdr_shift;
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
-		int vol_id = clebs[i].vol_id, lnum = clebs[i].lnum, lpos = 0;
+		int vol_id = clebs[i].vol_id, lnum = clebs[i].lnum, lpos = clebs[i].lpos;
 		void *buf = ubi->peb_buf + offset;
 		struct ubi_volume *vol = vols[i];
-		int spnum = vol->eba_tbl[lnum];
+		int spnum;
 		int data_size;
 		u32 crc;
+		bool raw;
 
-		ubi_assert(!ubi->consolidated[spnum]);
+		spnum = vol->eba_tbl[lnum];
 
-		err = ubi_io_read(ubi, buf, spnum, ubi->leb_start + (lpos * ubi->leb_size), ubi->leb_size);
+		/* we raced against leb unmap */
+		if (spnum == UBI_LEB_UNMAPPED) {
+			//TODO: should be fixed now and no longer trigger.
+			ubi_assert(0);
+			err = 0;
+			goto err_unlock_fm_eba;
+		}
+
+		if (ubi->consolidated[spnum]) {
+			ubi_assert(ubi_conso_invalidate_leb(ubi, spnum, vol_id, lnum) == true);
+			raw = true;
+		} else {
+			ubi_assert(!lpos);
+			raw = false;
+		}
+
+		ubi_assert(offset + ubi->leb_size < ubi->consolidated_peb_size);
+
+		if (!raw)
+			err = ubi_io_read(ubi, buf, spnum, ubi->leb_start, ubi->leb_size);
+		else
+			err = ubi_io_raw_read(ubi, buf, spnum, ubi->leb_start + (lpos * ubi->leb_size), ubi->leb_size);
+
 		if (err && err != UBI_IO_BITFLIPS)
 			goto err_unlock_fm_eba;
 
@@ -199,6 +224,8 @@ static int consolidate_lebs(struct ubi_device *ubi)
 		crc = crc32(UBI_CRC32_INIT, buf, data_size);
 		vid_hdrs[i].data_crc = cpu_to_be32(crc);
 		offset += ubi->leb_size;
+
+		new_clebs[i].lpos = i;
 	}
 
 	/*
@@ -224,15 +251,15 @@ static int consolidate_lebs(struct ubi_device *ubi)
 		goto err_unlock_fm_eba;
 	}
 
-	memcpy(dup_clebs, clebs, sizeof(*clebs) * ubi->lebs_per_cpeb);
-	ubi->consolidated[pnum] = dup_clebs;
 	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
 		struct ubi_volume *vol = vols[i];
 		int lnum = clebs[i].lnum;
 
 		opnums[i] = vol->eba_tbl[lnum];
+
 		vol->eba_tbl[lnum] = pnum;
 	}
+	ubi->consolidated[pnum] = new_clebs;
 
 	up_read(&ubi->fm_eba_sem);
 	mutex_unlock(&ubi->buf_mutex);
@@ -255,13 +282,13 @@ err_unlock_fm_eba:
 	up_read(&ubi->fm_eba_sem);
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++)
-		ubi_coso_add_full_leb(ubi, clebs[i].vol_id, clebs[i].lnum);
+		ubi_coso_add_full_leb(ubi, clebs[i].vol_id, clebs[i].lnum, clebs[i].lpos);
 
 	ubi_wl_put_peb(ubi, UBI_UNKNOWN, UBI_UNKNOWN, pnum, 0, true);
 err_unlock_lebs:
 	consolidation_unlock(ubi, clebs);
 err_free_mem:
-	kfree(dup_clebs);
+	kfree(new_clebs);
 	kfree(clebs);
 	kfree(opnums);
 	kfree(vols);
@@ -368,36 +395,7 @@ ubi_conso_get_consolidated(struct ubi_device *ubi, int pnum)
 	return NULL;
 }
 
-bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
-				   int vol_id, int lnum)
-{
-	struct ubi_leb_desc *clebs = NULL;
-	int i;
-
-	if (!ubi->consolidated)
-		return true;
-
-	clebs = ubi->consolidated[pnum];
-	if (!clebs)
-		return true;
-
-	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
-		if (clebs[i].lnum == lnum && clebs[i].vol_id == vol_id) {
-		    clebs[i].lnum = -1;
-		    clebs[i].vol_id = -1;
-		}
-
-		if (clebs[i].lnum >= 0 && clebs[i].vol_id >= 0)
-			return false;
-	}
-
-	ubi->consolidated[pnum] = NULL;
-	kfree(clebs);
-
-	return true;
-}
-
-int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum)
+int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum, int lpos)
 {
 	struct ubi_full_leb *fleb;
 
@@ -414,6 +412,7 @@ int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum)
 
 	fleb->desc.vol_id = vol_id;
 	fleb->desc.lnum = lnum;
+	fleb->desc.lpos = lpos;
 
 	spin_lock(&ubi->full_lock);
 	list_add_tail(&fleb->node, &ubi->full);
@@ -421,6 +420,48 @@ int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum)
 	spin_unlock(&ubi->full_lock);
 
 	return 0;
+}
+
+bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
+				   int vol_id, int lnum)
+{
+	struct ubi_leb_desc *clebs = NULL;
+
+	if (!ubi->consolidated)
+		return true;
+
+	clebs = ubi->consolidated[pnum];
+	if (!clebs)
+		return true;
+
+	//TODO: make this generic again
+	BUG_ON(ubi->lebs_per_cpeb > 2);
+
+	if (clebs[0].lnum == lnum && clebs[0].vol_id == vol_id) {
+		clebs[0].lnum = -1;
+		clebs[0].vol_id = -1;
+
+		if (clebs[1].lnum > -1 && clebs[1].vol_id > -1) {
+			ubi_coso_add_full_leb(ubi, clebs[1].vol_id, clebs[1].lnum, clebs[1].lpos);
+
+			return false;
+		}
+	} else if (clebs[1].lnum == lnum && clebs[1].vol_id == vol_id) {
+		clebs[1].lnum = -1;
+		clebs[1].vol_id = -1;
+
+		if (clebs[0].lnum > -1 && clebs[0].vol_id > -1) {
+			ubi_coso_add_full_leb(ubi, clebs[0].vol_id, clebs[0].lnum, clebs[0].lpos);
+
+			return false;
+		}
+	} else
+		ubi_assert(0);
+
+	ubi->consolidated[pnum] = NULL;
+	kfree(clebs);
+
+	return true;
 }
 
 int ubi_conso_init(struct ubi_device *ubi)

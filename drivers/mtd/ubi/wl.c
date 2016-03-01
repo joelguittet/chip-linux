@@ -1125,6 +1125,7 @@ int ubi_wl_put_peb(struct ubi_device *ubi, int vol_id, int lnum,
 	dbg_wl("PEB %d", pnum);
 	ubi_assert(pnum >= 0);
 	ubi_assert(pnum < ubi->peb_count);
+	ubi_assert(!ubi->consolidated || !ubi->consolidated[pnum]);
 
 	down_read(&ubi->fm_protect);
 
