@@ -1690,16 +1690,19 @@ static int self_check_ai(struct ubi_device *ubi, struct ubi_attach_info *ai)
 
 	/* Check that attaching information is correct */
 	ubi_rb_for_each_entry(rb1, av, &ai->volumes, rb) {
+		struct ubi_vid_hdr *vh;
+
 		last_leb = NULL;
 		ubi_rb_for_each_entry(rb2, leb, &av->root, rb) {
 			int vol_type;
+			int nvidh = ubi->lebs_per_cpeb;
 
 			cond_resched();
 
 			last_leb = leb;
 			peb = leb->peb;
 
-			err = ubi_io_read_vid_hdr(ubi, peb->pnum, vidh, 1);
+			err = ubi_io_read_vid_hdrs(ubi, peb->pnum, vidh, &nvidh, 1);
 			if (err && err != UBI_IO_BITFLIPS) {
 				ubi_err(ubi, "VID header is not OK (%d)",
 					err);
@@ -1708,39 +1711,42 @@ static int self_check_ai(struct ubi_device *ubi, struct ubi_attach_info *ai)
 				return err;
 			}
 
-			vol_type = vidh->vol_type == UBI_VID_DYNAMIC ?
+			ubi_assert(leb->peb_pos < nvidh);
+			vh = &vidh[leb->peb_pos];
+
+			vol_type = vh->vol_type == UBI_VID_DYNAMIC ?
 				   UBI_DYNAMIC_VOLUME : UBI_STATIC_VOLUME;
 			if (av->vol_type != vol_type) {
 				ubi_err(ubi, "bad vol_type");
 				goto bad_vid_hdr;
 			}
 
-			if (leb->sqnum != be64_to_cpu(vidh->sqnum)) {
+			if (leb->sqnum != be64_to_cpu(vh->sqnum)) {
 				ubi_err(ubi, "bad sqnum %llu", leb->sqnum);
 				goto bad_vid_hdr;
 			}
 
-			if (av->vol_id != be32_to_cpu(vidh->vol_id)) {
+			if (av->vol_id != be32_to_cpu(vh->vol_id)) {
 				ubi_err(ubi, "bad vol_id %d", av->vol_id);
 				goto bad_vid_hdr;
 			}
 
-			if (av->compat != vidh->compat) {
-				ubi_err(ubi, "bad compat %d", vidh->compat);
+			if (av->compat != vh->compat) {
+				ubi_err(ubi, "bad compat %d", vh->compat);
 				goto bad_vid_hdr;
 			}
 
-			if (leb->desc.lnum != be32_to_cpu(vidh->lnum)) {
+			if (leb->desc.lnum != be32_to_cpu(vh->lnum)) {
 				ubi_err(ubi, "bad lnum %d", leb->desc.lnum);
 				goto bad_vid_hdr;
 			}
 
-			if (av->used_ebs != be32_to_cpu(vidh->used_ebs)) {
+			if (av->used_ebs != be32_to_cpu(vh->used_ebs)) {
 				ubi_err(ubi, "bad used_ebs %d", av->used_ebs);
 				goto bad_vid_hdr;
 			}
 
-			if (av->data_pad != be32_to_cpu(vidh->data_pad)) {
+			if (av->data_pad != be32_to_cpu(vh->data_pad)) {
 				ubi_err(ubi, "bad data_pad %d", av->data_pad);
 				goto bad_vid_hdr;
 			}
@@ -1749,12 +1755,12 @@ static int self_check_ai(struct ubi_device *ubi, struct ubi_attach_info *ai)
 		if (!last_leb)
 			continue;
 
-		if (av->highest_lnum != be32_to_cpu(vidh->lnum)) {
+		if (av->highest_lnum != be32_to_cpu(vh->lnum)) {
 			ubi_err(ubi, "bad highest_lnum %d", av->highest_lnum);
 			goto bad_vid_hdr;
 		}
 
-		if (av->last_data_size != be32_to_cpu(vidh->data_size)) {
+		if (av->last_data_size != be32_to_cpu(vh->data_size)) {
 			ubi_err(ubi, "bad last_data_size %d",
 				av->last_data_size);
 			goto bad_vid_hdr;
