@@ -1006,7 +1006,7 @@ static int scan_peb(struct ubi_device *ubi, struct ubi_attach_info *ai,
 			return err;
 		goto adjust_mean_ec;
 	default:
-		ubi_err(ubi, "'ubi_io_read_vid_hdr()' returned unknown code %d",
+		ubi_err(ubi, "'ubi_io_read_vid_hdrs()' returned unknown code %d",
 			err);
 		return -EINVAL;
 	}
