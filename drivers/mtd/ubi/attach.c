@@ -377,6 +377,8 @@ int ubi_compare_lebs(struct ubi_device *ubi, const struct ubi_ainf_leb *aeb,
 			return 1;
 		}
 	} else {
+		int nvidh = ubi->lebs_per_cpeb;
+
 		if (!aeb->copy_flag) {
 			/* It is not a copy, so it is newer */
 			dbg_bld("first PEB %d is newer, copy_flag is unset",
@@ -389,7 +391,7 @@ int ubi_compare_lebs(struct ubi_device *ubi, const struct ubi_ainf_leb *aeb,
 			return -ENOMEM;
 
 		pnum = aeb->peb->pnum;
-		err = ubi_io_read_vid_hdr(ubi, pnum, vh, 0);
+		err = ubi_io_read_vid_hdrs(ubi, pnum, vh, &nvidh, 0);
 		if (err) {
 			if (err == UBI_IO_BITFLIPS)
 				bitflips = 1;
@@ -403,7 +405,8 @@ int ubi_compare_lebs(struct ubi_device *ubi, const struct ubi_ainf_leb *aeb,
 			}
 		}
 
-		vid_hdr = vh;
+		ubi_assert(aeb->peb_pos < nvidh);
+		vid_hdr = &vh[aeb->peb_pos];
 	}
 
 	/* Read the data of the copy and check the CRC */
