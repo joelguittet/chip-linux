@@ -267,8 +267,7 @@ static int consolidate_lebs(struct ubi_device *ubi)
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
 		//TODO set torture if needed
-		ubi_wl_put_peb(ubi, clebs[i].vol_id, clebs[i].lnum,
-			       opnums[i], 0, true);
+		ubi_wl_put_peb(ubi, opnums[i], 0, true);
 	}
 
 	kfree(clebs);
@@ -284,7 +283,7 @@ err_unlock_fm_eba:
 	for (i = 0; i < ubi->lebs_per_cpeb; i++)
 		ubi_coso_add_full_leb(ubi, clebs[i].vol_id, clebs[i].lnum, clebs[i].lpos);
 
-	ubi_wl_put_peb(ubi, UBI_UNKNOWN, UBI_UNKNOWN, pnum, 0, true);
+	ubi_wl_put_peb(ubi, pnum, 0, true);
 err_unlock_lebs:
 	consolidation_unlock(ubi, clebs);
 err_free_mem:

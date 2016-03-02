@@ -463,7 +463,6 @@ struct ubi_debug_info {
  * @ref: reference counter for work objects
  * @e: physical eraseblock to erase
  * @vol_id: the volume ID on which this erasure is being performed
- * @lnum: the logical eraseblock number
  * @torture: if the physical eraseblock has to be tortured
  * @anchor: produce a anchor PEB to by used by fastmap
  *
@@ -481,8 +480,6 @@ struct ubi_work {
 	struct kref ref;
 	/* The below fields are only relevant to erasure works */
 	struct ubi_wl_entry *e;
-	int vol_id;
-	int lnum;
 	int torture;
 	int anchor;
 };
@@ -957,8 +954,8 @@ static inline int ubi_conso_sync(struct ubi_device *ubi) { return 0; }
 
 /* wl.c */
 int ubi_wl_get_peb(struct ubi_device *ubi, bool producing);
-int ubi_wl_put_peb(struct ubi_device *ubi, int vol_id, int lnum,
-		   int pnum, int torture, bool producing);
+int ubi_wl_put_peb(struct ubi_device *ubi,int pnum, int torture,
+		   bool producing);
 int ubi_wl_scrub_peb(struct ubi_device *ubi, int pnum);
 int ubi_wl_init(struct ubi_device *ubi, struct ubi_attach_info *ai);
 void ubi_wl_close(struct ubi_device *ubi);
