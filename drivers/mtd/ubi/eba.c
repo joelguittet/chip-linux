@@ -361,7 +361,7 @@ int ubi_eba_unmap_leb(struct ubi_device *ubi, struct ubi_volume *vol,
 out_unlock:
 	ubi_eba_leb_write_unlock(ubi, vol_id, lnum);
 	if (release_peb)
-		err = ubi_wl_put_peb(ubi, pnum, 0, false);
+		err = ubi_wl_put_peb(ubi, pnum, 0);
 
 	return err;
 }
@@ -653,7 +653,7 @@ retry:
 
 	vol->eba_tbl[lnum] = new_pnum;
 	up_read(&ubi->fm_eba_sem);
-	ubi_wl_put_peb(ubi, pnum, 1, false);
+	ubi_wl_put_peb(ubi, pnum, 1);
 
 	ubi_msg(ubi, "data was successfully recovered");
 	return 0;
@@ -661,7 +661,7 @@ retry:
 out_unlock:
 	mutex_unlock(&ubi->buf_mutex);
 out_put:
-	ubi_wl_put_peb(ubi, new_pnum, 1, false);
+	ubi_wl_put_peb(ubi, new_pnum, 1);
 	ubi_free_vid_hdr(ubi, vid_hdr);
 	return err;
 
@@ -671,7 +671,7 @@ write_error:
 	 * get another one.
 	 */
 	ubi_warn(ubi, "failed to write to PEB %d", new_pnum);
-	ubi_wl_put_peb(ubi, new_pnum, 1, false);
+	ubi_wl_put_peb(ubi, new_pnum, 1);
 	if (++tries > UBI_IO_RETRIES) {
 		ubi_free_vid_hdr(ubi, vid_hdr);
 		return err;
@@ -827,7 +827,7 @@ write_error:
 	 * eraseblock, so just put it and request a new one. We assume that if
 	 * this physical eraseblock went bad, the erase code will handle that.
 	 */
-	err = ubi_wl_put_peb(ubi, pnum, 1, false);
+	err = ubi_wl_put_peb(ubi, pnum, 1);
 	if (err || ++tries > UBI_IO_RETRIES) {
 		ubi_ro_mode(ubi);
 		ubi_eba_leb_write_unlock(ubi, vol_id, lnum);
@@ -959,7 +959,7 @@ write_error:
 		return err;
 	}
 
-	err = ubi_wl_put_peb(ubi, pnum, 1, false);
+	err = ubi_wl_put_peb(ubi, pnum, 1);
 	if (err || ++tries > UBI_IO_RETRIES) {
 		ubi_ro_mode(ubi);
 		ubi_eba_leb_write_unlock(ubi, vol_id, lnum);
@@ -1077,7 +1077,7 @@ retry:
 out_leb_unlock:
 	ubi_eba_leb_write_unlock(ubi, vol_id, lnum);
 	if (release_peb) {
-		err = ubi_wl_put_peb(ubi, old_pnum, 0, false);
+		err = ubi_wl_put_peb(ubi, old_pnum, 0);
 		if (err)
 			goto out_leb_unlock;
 	}
@@ -1100,7 +1100,7 @@ write_error:
 		goto out_leb_unlock;
 	}
 
-	err = ubi_wl_put_peb(ubi, pnum, 1, false);
+	err = ubi_wl_put_peb(ubi, pnum, 1);
 	if (err || ++tries > UBI_IO_RETRIES) {
 		ubi_ro_mode(ubi);
 		goto out_leb_unlock;

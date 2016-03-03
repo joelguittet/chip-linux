@@ -665,6 +665,7 @@ struct ubi_device {
 	struct mutex work_mutex;
 	struct ubi_work *cur_work;
 	int wl_scheduled;
+	int conso_scheduled;
 	struct ubi_wl_entry **lookuptbl;
 	struct ubi_wl_entry *move_from;
 	struct ubi_wl_entry *move_to;
@@ -954,8 +955,7 @@ static inline int ubi_conso_sync(struct ubi_device *ubi) { return 0; }
 
 /* wl.c */
 int ubi_wl_get_peb(struct ubi_device *ubi, bool producing);
-int ubi_wl_put_peb(struct ubi_device *ubi,int pnum, int torture,
-		   bool producing);
+int ubi_wl_put_peb(struct ubi_device *ubi,int pnum, int torture);
 int ubi_wl_scrub_peb(struct ubi_device *ubi, int pnum);
 int ubi_wl_init(struct ubi_device *ubi, struct ubi_attach_info *ai);
 void ubi_wl_close(struct ubi_device *ubi);

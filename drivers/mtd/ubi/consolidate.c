@@ -267,7 +267,7 @@ static int consolidate_lebs(struct ubi_device *ubi)
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
 		//TODO set torture if needed
-		ubi_wl_put_peb(ubi, opnums[i], 0, true);
+		ubi_wl_put_peb(ubi, opnums[i], 0);
 	}
 
 	kfree(clebs);
@@ -283,7 +283,7 @@ err_unlock_fm_eba:
 	for (i = 0; i < ubi->lebs_per_cpeb; i++)
 		ubi_coso_add_full_leb(ubi, clebs[i].vol_id, clebs[i].lnum, clebs[i].lpos);
 
-	ubi_wl_put_peb(ubi, pnum, 0, true);
+	ubi_wl_put_peb(ubi, pnum, 0);
 err_unlock_lebs:
 	consolidation_unlock(ubi, clebs);
 err_free_mem:
@@ -307,6 +307,9 @@ static int consolidation_worker(struct ubi_device *ubi,
 	ret = consolidate_lebs(ubi);
 	if (ret == -EAGAIN)
 		ret = 0;
+
+	ubi->conso_scheduled = 0;
+	smp_wmb();
 
 	if (ubi_conso_consolidation_needed(ubi))
 		ubi_conso_schedule(ubi);
@@ -339,9 +342,16 @@ bool ubi_conso_consolidation_needed(struct ubi_device *ubi)
 
 void ubi_conso_schedule(struct ubi_device *ubi)
 {
-	struct ubi_work *wrk = ubi_alloc_work(ubi);
+	struct ubi_work *wrk;
 
+	if (ubi->conso_scheduled)
+		return;
+
+	wrk = ubi_alloc_work(ubi);
 	if (wrk) {
+		ubi->conso_scheduled = 1;
+		smp_wmb();
+
 		wrk->func = &consolidation_worker;
 		INIT_LIST_HEAD(&wrk->list);
 		ubi_schedule_work(ubi, wrk);
@@ -352,10 +362,16 @@ void ubi_conso_schedule(struct ubi_device *ubi)
 int ubi_conso_sync(struct ubi_device *ubi)
 {
 	int ret = -ENOMEM;
+	struct ubi_work *wrk;
 
-	struct ubi_work *wrk = ubi_alloc_work(ubi);
+	if (ubi->conso_scheduled)
+		return -EAGAIN;
 
+	wrk = ubi_alloc_work(ubi);
 	if (wrk) {
+		ubi->conso_scheduled = 1;
+		smp_wmb();
+
 		wrk->func = &consolidation_worker;
 		ret = ubi_schedule_work_sync(ubi, wrk);
 	}

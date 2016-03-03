@@ -1087,8 +1087,7 @@ static int erase_worker(struct ubi_device *ubi, struct ubi_work *wl_wrk,
  * occurred to this @pnum and it has to be tested. This function returns zero
  * in case of success, and a negative error code in case of failure.
  */
-int ubi_wl_put_peb(struct ubi_device *ubi, int pnum, int torture,
-		   bool producing)
+int ubi_wl_put_peb(struct ubi_device *ubi, int pnum, int torture)
 {
 	int err;
 	struct ubi_wl_entry *e;
@@ -1159,19 +1158,6 @@ retry:
 		}
 	}
 	spin_unlock(&ubi->wl_lock);
-
-	/*
-	 * Currently we allow multiple consolidation works being scheduled
-	 * to make sure that free PEBs are aggressively produced and we don't
-	 * have to block at lot in produce_free_peb().
-	 * As consequence we have to erase the new PEB in sync. If we don't
-	 * do that the erase job will be scheduled at the end of the work list
-	 * and other consolidation works will starve.
-	 */
-	if (producing) {
-		up_read(&ubi->fm_protect);
-		return do_sync_erase(ubi, e, torture);
-	}
 
 	wrk = ubi_alloc_erase_work(ubi, e, torture);
 	if (!wrk) {
@@ -1679,15 +1665,9 @@ retry:
 	spin_lock(&ubi->wl_lock);
 
 	if (!enough_free_pebs(ubi) && !producing) {
-		if (ubi->works_count == 0) {
-			ubi_err(ubi, "no free eraseblocks");
-			ubi_assert(list_empty(&ubi->works));
-			spin_unlock(&ubi->wl_lock);
-			return -ENOSPC;
-		}
-
 		err = produce_free_peb(ubi);
 		if (err < 0) {
+			ubi_err(ubi, "unable to produce free eraseblocks: %i", err);
 			spin_unlock(&ubi->wl_lock);
 			return err;
 		}
