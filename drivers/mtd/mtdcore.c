@@ -1342,6 +1342,43 @@ void *mtd_kmalloc_up_to(const struct mtd_info *mtd, size_t *size)
 }
 EXPORT_SYMBOL_GPL(mtd_kmalloc_up_to);
 
+#ifdef CONFIG_HAS_DMA
+int mtd_map_buf(struct mtd_info *mtd, struct device *dev,
+		struct sg_table *sgt, const void *buf, size_t len,
+		enum dma_data_direction dir)
+{
+	int ret;
+
+	ret = sg_alloc_table_from_buf(sgt, buf, len, 0, 0, 0, GFP_KERNEL);
+	if (ret)
+		return ret;
+
+	ret = dma_map_sg(dev, sgt->sgl, sgt->nents, dir);
+	if (!ret)
+		ret = -ENOMEM;
+
+	if (ret < 0) {
+		sg_free_table(sgt);
+		return ret;
+	}
+
+	sgt->nents = ret;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(mtd_map_buf);
+
+void mtd_unmap_buf(struct mtd_info *mtd, struct device *dev,
+		   struct sg_table *sgt, enum dma_data_direction dir)
+{
+	if (sgt->orig_nents) {
+		dma_unmap_sg(dev, sgt->sgl, sgt->orig_nents, dir);
+		sg_free_table(sgt);
+	}
+}
+EXPORT_SYMBOL_GPL(mtd_unmap_buf);
+#endif /* !CONFIG_HAS_DMA */
+
 #ifdef CONFIG_PROC_FS
 
 /*====================================================================*/
