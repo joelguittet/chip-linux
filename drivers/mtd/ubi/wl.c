@@ -584,6 +584,7 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 #endif
 	struct ubi_wl_entry *e1, *e2;
 	struct ubi_vid_hdr *vid_hdr;
+	int nvidh = ubi->lebs_per_cpeb;
 
 	if (shutdown)
 		return 0;
@@ -674,13 +675,6 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 	ubi->move_to = e2;
 	spin_unlock(&ubi->wl_lock);
 
-	//XXX :-( :-( :-(
-	if (ubi->consolidated && ubi->consolidated[e1->pnum]) {
-		ubi_err(ubi, "TODO: Implement wear leveling for consolidated LEBs!");
-		protect = 1;
-		goto out_not_moved;
-	}
-
 	/*
 	 * Now we are going to copy physical eraseblock @e1->pnum to @e2->pnum.
 	 * We so far do not know which logical eraseblock our physical
@@ -692,7 +686,7 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 	 * which is being moved was unmapped.
 	 */
 
-	err = ubi_io_read_vid_hdr(ubi, e1->pnum, vid_hdr, 0);
+	err = ubi_io_read_vid_hdrs(ubi, e1->pnum, vid_hdr, &nvidh, 0);
 	if (err && err != UBI_IO_BITFLIPS) {
 		if (err == UBI_IO_FF) {
 			/*
@@ -725,7 +719,11 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 		goto out_error;
 	}
 
-	err = ubi_eba_copy_leb(ubi, e1->pnum, e2->pnum, vid_hdr);
+	if (ubi->consolidated && ubi->consolidated[e1->pnum])
+		err = ubi_eba_copy_lebs(ubi, e1->pnum, e2->pnum, vid_hdr, nvidh);
+	else
+		err = ubi_eba_copy_leb(ubi, e1->pnum, e2->pnum, vid_hdr);
+
 	if (err) {
 		if (err == MOVE_CANCEL_RACE) {
 			/*

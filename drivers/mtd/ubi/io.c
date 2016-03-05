@@ -475,7 +475,6 @@ static int do_sync_erase(struct ubi_device *ubi, int pnum)
 
 	dbg_io("erase PEB %d", pnum);
 	ubi_assert(pnum >= 0 && pnum < ubi->peb_count);
-	ubi_assert(!ubi->consolidated || !ubi->consolidated[pnum]);
 
 	if (ubi->ro_mode) {
 		ubi_err(ubi, "read-only mode");

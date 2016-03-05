@@ -1312,6 +1312,177 @@ out_unlock_leb:
 	return err;
 }
 
+
+/**
+ * ubi_eba_copy_lebs - copy consolidated logical eraseblocks.
+ *
+ * Works like ubi_eba_copy_leb but on consolidated LEB.
+ * It is less complicated as a PEB containing consolidated LEBs
+ * has only full LEBs and we don't have to do a lot of space
+ * calucation.
+ * TODO: clean this function up, more clean error handling, etc...
+ */
+int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
+		     struct ubi_vid_hdr *vid_hdr, int nvidh)
+{
+	int err, i;
+	int *vol_id = NULL, *lnum = NULL;
+	struct ubi_volume **vol = NULL;
+	uint32_t crc;
+
+	vol_id = kmalloc(nvidh * sizeof(*vol_id), GFP_NOFS);
+	lnum = kmalloc(nvidh * sizeof(*lnum), GFP_NOFS);
+	vol = kmalloc(nvidh * sizeof(*vol), GFP_NOFS);
+
+	if (!vol_id || !lnum || !vol) {
+		kfree(vol_id);
+		kfree(lnum);
+		kfree(vol);
+		return -ENOMEM;
+	}
+
+	dbg_wl("copy LEBs of PEB %d to PEB %d", from, to);
+
+	spin_lock(&ubi->volumes_lock);
+
+	for (i = 0; i < nvidh; i++) {
+		vol_id[i] = be32_to_cpu(vid_hdr[i].vol_id);
+		lnum[i] = be32_to_cpu(vid_hdr[i].lnum);
+		vol[i] = ubi->volumes[vol_id2idx(ubi, vol_id[i])];
+	}
+
+	/*
+	 * Note, we may race with volume deletion, which means that the volume
+	 * this logical eraseblock belongs to might be being deleted. Since the
+	 * volume deletion un-maps all the volume's logical eraseblocks, it will
+	 * be locked in 'ubi_wl_put_peb()' and wait for the WL worker to finish.
+	 */
+	spin_unlock(&ubi->volumes_lock);
+
+	for (i = 0; i < nvidh; i++) {
+		if (!vol[i]) {
+			/* No need to do further work, cancel */
+			ubi_msg(ubi, "volume %d is being removed, cancel", vol_id[i]);
+			kfree(vol_id);
+			kfree(lnum);
+			kfree(vol);
+			return MOVE_CANCEL_RACE;
+		}
+	}
+
+	/*
+	 * We do not want anybody to write to this logical eraseblock while we
+	 * are moving it, so lock it.
+	 *
+	 * Note, we are using non-waiting locking here, because we cannot sleep
+	 * on the LEB, since it may cause deadlocks. Indeed, imagine a task is
+	 * unmapping the LEB which is mapped to the PEB we are going to move
+	 * (@from). This task locks the LEB and goes sleep in the
+	 * 'ubi_wl_put_peb()' function on the @ubi->move_mutex. In turn, we are
+	 * holding @ubi->move_mutex and go sleep on the LEB lock. So, if the
+	 * LEB is already locked, we just do not move it and return
+	 * %MOVE_RETRY. Note, we do not return %MOVE_CANCEL_RACE here because
+	 * we do not know the reasons of the contention - it may be just a
+	 * normal I/O on this LEB, so we want to re-try.
+	 */
+
+	for (i = 0; i < nvidh; i++) {
+		err = leb_write_trylock(ubi, vol_id[i], lnum[i]);
+		if (err) {
+			int j;
+
+			for (j = 0; j < i; j++)
+				ubi_eba_leb_write_unlock(ubi, vol_id[j], lnum[j]);
+
+			kfree(vol_id);
+			kfree(lnum);
+			kfree(vol);
+			return MOVE_RETRY;
+		}
+	}
+	for (i = 0; i < nvidh; i++) {
+		/*
+		 * The LEB might have been put meanwhile, and the task which put it is
+		 * probably waiting on @ubi->move_mutex. No need to continue the work,
+		 * cancel it.
+		 */
+		if (vol[i]->eba_tbl[lnum[i]] != from) {
+			ubi_msg(ubi, "LEB %d:%d is no longer mapped to PEB %d, mapped to PEB %d, cancel",
+			       vol_id[i], lnum[i], from, vol[i]->eba_tbl[lnum[i]]);
+			err = MOVE_CANCEL_RACE;
+			goto out_unlock_leb;
+		}
+	}
+
+	/*
+	 * OK, now the LEB is locked and we can safely start moving it. Since
+	 * this function utilizes the @ubi->peb_buf buffer which is shared
+	 * with some other functions - we lock the buffer by taking the
+	 * @ubi->buf_mutex.
+	 */
+	mutex_lock(&ubi->buf_mutex);
+	dbg_wl("read %d bytes of data", ubi->consolidated_peb_size - ubi->leb_start);
+	err = ubi_io_raw_read(ubi, ubi->peb_buf, from, ubi->leb_start, ubi->consolidated_peb_size - ubi->leb_start);
+	if (err && err != UBI_IO_BITFLIPS) {
+		ubi_warn(ubi, "error %d while reading data from PEB %d",
+			 err, from);
+		err = MOVE_SOURCE_RD_ERR;
+		goto out_unlock_buf;
+	}
+
+	cond_resched();
+	for (i = 0; i < nvidh; i++) {
+		//TODO: we could skip crc calucation as consolidated LEB _always_ hav copy_flag=1 and hence also a valid crc...
+		crc = crc32(UBI_CRC32_INIT, ubi->peb_buf + ubi->leb_start + (i * ubi->leb_size), be32_to_cpu(vid_hdr[i].data_size));
+		vid_hdr[i].copy_flag = 1;
+		vid_hdr[i].data_crc = cpu_to_be32(crc);
+		vid_hdr[i].sqnum = cpu_to_be64(ubi_next_sqnum(ubi));
+
+		cond_resched();
+	}
+
+
+	err = ubi_io_write_vid_hdrs(ubi, to, vid_hdr, nvidh);
+	if (err) {
+		if (err == -EIO)
+			err = MOVE_TARGET_WR_ERR;
+		goto out_unlock_buf;
+	}
+
+	cond_resched();
+
+	err = ubi_io_raw_write(ubi, ubi->peb_buf, to, ubi->leb_start, ubi->consolidated_peb_size - ubi->leb_start);
+	if (err) {
+		if (err == -EIO)
+			err = MOVE_TARGET_WR_ERR;
+		goto out_unlock_buf;
+	}
+
+	cond_resched();
+
+	down_read(&ubi->fm_eba_sem);
+	for (i = 0; i < nvidh; i++) {
+		ubi_assert(vol[i]->eba_tbl[lnum[i]] == from);
+		vol[i]->eba_tbl[lnum[i]] = to;
+	}
+
+	ubi->consolidated[to] = ubi->consolidated[from];
+	ubi->consolidated[from] = NULL;
+
+	up_read(&ubi->fm_eba_sem);
+
+out_unlock_buf:
+	mutex_unlock(&ubi->buf_mutex);
+out_unlock_leb:
+	for (i = 0; i < nvidh; i++)
+		ubi_eba_leb_write_unlock(ubi, vol_id[i], lnum[i]);
+	kfree(vol_id);
+	kfree(lnum);
+	kfree(vol);
+
+	return err;
+}
+
 /**
  * print_rsvd_warning - warn about not having enough reserved PEBs.
  * @ubi: UBI device description object
