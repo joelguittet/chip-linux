@@ -17,6 +17,7 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_panel.h>
 
+#include "sun4i_crtc.h"
 #include "sun4i_drv.h"
 #include "sun4i_tcon.h"
 
@@ -150,6 +151,15 @@ static int sun4i_rgb_atomic_check(struct drm_encoder *encoder,
 				  struct drm_crtc_state *crtc_state,
 				  struct drm_connector_state *conn_state)
 {
+	struct drm_display_mode *mode = &crtc_state->mode;
+	struct sun4i_crtc_state *state = drm_crtc_state_to_sun4i_crtc_state(crtc_state);
+
+	state->display_x_size = mode->hdisplay;
+	state->display_y_size = mode->vdisplay;
+
+	state->plane_x_offset = 0;
+	state->plane_y_offset = 0;
+
 	return 0;
 }
 
