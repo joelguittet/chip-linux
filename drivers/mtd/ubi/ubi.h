@@ -463,7 +463,6 @@ struct ubi_debug_info {
  * @ref: reference counter for work objects
  * @e: physical eraseblock to erase
  * @vol_id: the volume ID on which this erasure is being performed
- * @lnum: the logical eraseblock number
  * @torture: if the physical eraseblock has to be tortured
  * @anchor: produce a anchor PEB to by used by fastmap
  *
@@ -481,8 +480,6 @@ struct ubi_work {
 	struct kref ref;
 	/* The below fields are only relevant to erasure works */
 	struct ubi_wl_entry *e;
-	int vol_id;
-	int lnum;
 	int torture;
 	int anchor;
 };
@@ -668,6 +665,7 @@ struct ubi_device {
 	struct mutex work_mutex;
 	struct ubi_work *cur_work;
 	int wl_scheduled;
+	int conso_scheduled;
 	struct ubi_wl_entry **lookuptbl;
 	struct ubi_wl_entry *move_from;
 	struct ubi_wl_entry *move_to;
@@ -908,6 +906,8 @@ int ubi_eba_atomic_leb_change(struct ubi_device *ubi, struct ubi_volume *vol,
 			      int lnum, const void *buf, int len);
 int ubi_eba_copy_leb(struct ubi_device *ubi, int from, int to,
 		     struct ubi_vid_hdr *vid_hdr);
+int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
+		     struct ubi_vid_hdr *vid_hdr, int nvidh);
 int ubi_eba_init(struct ubi_device *ubi, struct ubi_attach_info *ai);
 unsigned long long ubi_next_sqnum(struct ubi_device *ubi);
 int ubi_eba_leb_write_lock_nested(struct ubi_device *ubi, int vol_id, int lnum,
@@ -957,8 +957,7 @@ static inline int ubi_conso_sync(struct ubi_device *ubi) { return 0; }
 
 /* wl.c */
 int ubi_wl_get_peb(struct ubi_device *ubi, bool producing);
-int ubi_wl_put_peb(struct ubi_device *ubi, int vol_id, int lnum,
-		   int pnum, int torture, bool producing);
+int ubi_wl_put_peb(struct ubi_device *ubi,int pnum, int torture);
 int ubi_wl_scrub_peb(struct ubi_device *ubi, int pnum);
 int ubi_wl_init(struct ubi_device *ubi, struct ubi_attach_info *ai);
 void ubi_wl_close(struct ubi_device *ubi);

@@ -488,7 +488,7 @@ static int erase_worker(struct ubi_device *ubi, struct ubi_work *wl_wrk,
 
 static struct ubi_work *ubi_alloc_erase_work(struct ubi_device *ubi,
 					     struct ubi_wl_entry *e,
-					     int vol_id, int lnum, int torture)
+					     int torture)
 {
 	struct ubi_work *wl_wrk;
 
@@ -500,8 +500,6 @@ static struct ubi_work *ubi_alloc_erase_work(struct ubi_device *ubi,
 
 	wl_wrk->func = &erase_worker;
 	wl_wrk->e = e;
-	wl_wrk->vol_id = vol_id;
-	wl_wrk->lnum = lnum;
 	wl_wrk->torture = torture;
 
 	return wl_wrk;
@@ -511,15 +509,13 @@ static struct ubi_work *ubi_alloc_erase_work(struct ubi_device *ubi,
  * schedule_erase - schedule an erase work.
  * @ubi: UBI device description object
  * @e: the WL entry of the physical eraseblock to erase
- * @vol_id: the volume ID that last used this PEB
- * @lnum: the last used logical eraseblock number for the PEB
  * @torture: if the physical eraseblock has to be tortured
  *
  * This function returns zero in case of success and a %-ENOMEM in case of
  * failure.
  */
 static int schedule_erase(struct ubi_device *ubi, struct ubi_wl_entry *e,
-			  int vol_id, int lnum, int torture)
+			  int torture)
 {
 	struct ubi_work *wl_wrk;
 
@@ -529,14 +525,12 @@ static int schedule_erase(struct ubi_device *ubi, struct ubi_wl_entry *e,
 	dbg_wl("schedule erasure of PEB %d, EC %d, torture %d",
 	       e->pnum, e->ec, torture);
 
-	wl_wrk = ubi_alloc_erase_work(ubi, e, vol_id, lnum, torture);
+	wl_wrk = ubi_alloc_erase_work(ubi, e, torture);
 	if (!wl_wrk)
 		return -ENOMEM;
 
 	wl_wrk->func = &erase_worker;
 	wl_wrk->e = e;
-	wl_wrk->vol_id = vol_id;
-	wl_wrk->lnum = lnum;
 	wl_wrk->torture = torture;
 
 	ubi_schedule_work(ubi, wl_wrk);
@@ -549,13 +543,11 @@ static int __erase_worker(struct ubi_device *ubi, struct ubi_work *wl_wrk);
  * do_sync_erase - run the erase worker synchronously.
  * @ubi: UBI device description object
  * @e: the WL entry of the physical eraseblock to erase
- * @vol_id: the volume ID that last used this PEB
- * @lnum: the last used logical eraseblock number for the PEB
  * @torture: if the physical eraseblock has to be tortured
  *
  */
 static int do_sync_erase(struct ubi_device *ubi, struct ubi_wl_entry *e,
-			 int vol_id, int lnum, int torture)
+			 int torture)
 {
 	struct ubi_work *wl_wrk;
 
@@ -567,8 +559,6 @@ static int do_sync_erase(struct ubi_device *ubi, struct ubi_wl_entry *e,
 
 	INIT_LIST_HEAD(&wl_wrk->list);
 	wl_wrk->e = e;
-	wl_wrk->vol_id = vol_id;
-	wl_wrk->lnum = lnum;
 	wl_wrk->torture = torture;
 
 	return __erase_worker(ubi, wl_wrk);
@@ -589,12 +579,12 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 				int shutdown)
 {
 	int err, scrubbing = 0, torture = 0, protect = 0, erroneous = 0;
-	int vol_id = -1, lnum = -1;
 #ifdef CONFIG_MTD_UBI_FASTMAP
 	int anchor = wrk->anchor;
 #endif
 	struct ubi_wl_entry *e1, *e2;
 	struct ubi_vid_hdr *vid_hdr;
+	int nvidh = ubi->lebs_per_cpeb;
 
 	if (shutdown)
 		return 0;
@@ -685,13 +675,6 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 	ubi->move_to = e2;
 	spin_unlock(&ubi->wl_lock);
 
-	//XXX :-( :-( :-(
-	if (ubi->consolidated && ubi->consolidated[e1->pnum]) {
-		ubi_err(ubi, "TODO: Implement wear leveling for consolidated LEBs!");
-		protect = 1;
-		goto out_not_moved;
-	}
-
 	/*
 	 * Now we are going to copy physical eraseblock @e1->pnum to @e2->pnum.
 	 * We so far do not know which logical eraseblock our physical
@@ -703,7 +686,7 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 	 * which is being moved was unmapped.
 	 */
 
-	err = ubi_io_read_vid_hdr(ubi, e1->pnum, vid_hdr, 0);
+	err = ubi_io_read_vid_hdrs(ubi, e1->pnum, vid_hdr, &nvidh, 0);
 	if (err && err != UBI_IO_BITFLIPS) {
 		if (err == UBI_IO_FF) {
 			/*
@@ -736,10 +719,11 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 		goto out_error;
 	}
 
-	vol_id = be32_to_cpu(vid_hdr->vol_id);
-	lnum = be32_to_cpu(vid_hdr->lnum);
+	if (ubi->consolidated && ubi->consolidated[e1->pnum])
+		err = ubi_eba_copy_lebs(ubi, e1->pnum, e2->pnum, vid_hdr, nvidh);
+	else
+		err = ubi_eba_copy_leb(ubi, e1->pnum, e2->pnum, vid_hdr);
 
-	err = ubi_eba_copy_leb(ubi, e1->pnum, e2->pnum, vid_hdr);
 	if (err) {
 		if (err == MOVE_CANCEL_RACE) {
 			/*
@@ -791,8 +775,8 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 
 	/* The PEB has been successfully moved */
 	if (scrubbing)
-		ubi_msg(ubi, "scrubbed PEB %d (LEB %d:%d), data moved to PEB %d",
-			e1->pnum, vol_id, lnum, e2->pnum);
+		ubi_msg(ubi, "scrubbed PEB %d, data moved to PEB %d",
+			e1->pnum, e2->pnum);
 	ubi_free_vid_hdr(ubi, vid_hdr);
 
 	spin_lock(&ubi->wl_lock);
@@ -804,7 +788,7 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 	ubi->move_to_put = ubi->wl_scheduled = 0;
 	spin_unlock(&ubi->wl_lock);
 
-	err = do_sync_erase(ubi, e1, vol_id, lnum, 0);
+	err = do_sync_erase(ubi, e1, 0);
 	if (err) {
 		if (e2)
 			wl_entry_destroy(ubi, e2);
@@ -816,9 +800,9 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 		 * Well, the target PEB was put meanwhile, schedule it for
 		 * erasure.
 		 */
-		dbg_wl("PEB %d (LEB %d:%d) was put meanwhile, erase",
-		       e2->pnum, vol_id, lnum);
-		err = do_sync_erase(ubi, e2, vol_id, lnum, 0);
+		dbg_wl("PEB %d was put meanwhile, erase",
+		       e2->pnum);
+		err = do_sync_erase(ubi, e2, 0);
 		if (err)
 			goto out_ro;
 	}
@@ -833,12 +817,7 @@ static int wear_leveling_worker(struct ubi_device *ubi, struct ubi_work *wrk,
 	 * have been changed, schedule it for erasure.
 	 */
 out_not_moved:
-	if (vol_id != -1)
-		dbg_wl("cancel moving PEB %d (LEB %d:%d) to PEB %d (%d)",
-		       e1->pnum, vol_id, lnum, e2->pnum, err);
-	else
-		dbg_wl("cancel moving PEB %d to PEB %d (%d)",
-		       e1->pnum, e2->pnum, err);
+	dbg_wl("cancel moving PEB %d to PEB %d (%d)", e1->pnum, e2->pnum, err);
 	spin_lock(&ubi->wl_lock);
 	if (protect)
 		prot_queue_add(ubi, e1);
@@ -855,7 +834,7 @@ out_not_moved:
 	spin_unlock(&ubi->wl_lock);
 
 	ubi_free_vid_hdr(ubi, vid_hdr);
-	err = do_sync_erase(ubi, e2, vol_id, lnum, torture);
+	err = do_sync_erase(ubi, e2, torture);
 	if (err)
 		goto out_ro;
 
@@ -863,12 +842,8 @@ out_not_moved:
 	return 0;
 
 out_error:
-	if (vol_id != -1)
-		ubi_err(ubi, "error %d while moving PEB %d to PEB %d",
-			err, e1->pnum, e2->pnum);
-	else
-		ubi_err(ubi, "error %d while moving PEB %d (LEB %d:%d) to PEB %d",
-			err, e1->pnum, vol_id, lnum, e2->pnum);
+	ubi_err(ubi, "error %d while moving PEB %d to PEB %d", err, e1->pnum,
+		e2->pnum);
 	spin_lock(&ubi->wl_lock);
 	ubi->move_from = ubi->move_to = NULL;
 	ubi->move_to_put = ubi->wl_scheduled = 0;
@@ -975,12 +950,9 @@ static int __erase_worker(struct ubi_device *ubi, struct ubi_work *wl_wrk)
 {
 	struct ubi_wl_entry *e = wl_wrk->e;
 	int pnum = e->pnum;
-	int vol_id = wl_wrk->vol_id;
-	int lnum = wl_wrk->lnum;
 	int err, available_consumed = 0;
 
-	dbg_wl("erase PEB %d EC %d LEB %d:%d",
-	       pnum, e->ec, wl_wrk->vol_id, wl_wrk->lnum);
+	dbg_wl("erase PEB %d EC %d", pnum, e->ec);
 
 	err = sync_erase(ubi, e, wl_wrk->torture);
 	if (!err) {
@@ -1007,7 +979,7 @@ static int __erase_worker(struct ubi_device *ubi, struct ubi_work *wl_wrk)
 		int err1;
 
 		/* Re-schedule the LEB for erasure */
-		err1 = schedule_erase(ubi, e, vol_id, lnum, 0);
+		err1 = schedule_erase(ubi, e, 0);
 		if (err1) {
 			wl_entry_destroy(ubi, e);
 			err = err1;
@@ -1105,8 +1077,6 @@ static int erase_worker(struct ubi_device *ubi, struct ubi_work *wl_wrk,
 /**
  * ubi_wl_put_peb - return a PEB to the wear-leveling sub-system.
  * @ubi: UBI device description object
- * @vol_id: the volume ID that last used this PEB
- * @lnum: the last used logical eraseblock number for the PEB
  * @pnum: physical eraseblock to return
  * @torture: if this physical eraseblock has to be tortured
  *
@@ -1115,8 +1085,7 @@ static int erase_worker(struct ubi_device *ubi, struct ubi_work *wl_wrk,
  * occurred to this @pnum and it has to be tested. This function returns zero
  * in case of success, and a negative error code in case of failure.
  */
-int ubi_wl_put_peb(struct ubi_device *ubi, int vol_id, int lnum,
-		   int pnum, int torture, bool producing)
+int ubi_wl_put_peb(struct ubi_device *ubi, int pnum, int torture)
 {
 	int err;
 	struct ubi_wl_entry *e;
@@ -1188,20 +1157,7 @@ retry:
 	}
 	spin_unlock(&ubi->wl_lock);
 
-	/*
-	 * Currently we allow multiple consolidation works being scheduled
-	 * to make sure that free PEBs are aggressively produced and we don't
-	 * have to block at lot in produce_free_peb().
-	 * As consequence we have to erase the new PEB in sync. If we don't
-	 * do that the erase job will be scheduled at the end of the work list
-	 * and other consolidation works will starve.
-	 */
-	if (producing) {
-		up_read(&ubi->fm_protect);
-		return do_sync_erase(ubi, e, vol_id, lnum, torture);
-	}
-
-	wrk = ubi_alloc_erase_work(ubi, e, vol_id, lnum, torture);
+	wrk = ubi_alloc_erase_work(ubi, e, torture);
 	if (!wrk) {
 		spin_lock(&ubi->wl_lock);
 		wl_tree_add(e, &ubi->used);
@@ -1370,7 +1326,7 @@ int ubi_wl_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 		e->pnum = peb->pnum;
 		e->ec = peb->ec;
 		ubi->lookuptbl[e->pnum] = e;
-		if (schedule_erase(ubi, e, UBI_UNKNOWN, UBI_UNKNOWN, 0)) {
+		if (schedule_erase(ubi, e, 0)) {
 			wl_entry_destroy(ubi, e);
 			goto out_free;
 		}
@@ -1707,15 +1663,9 @@ retry:
 	spin_lock(&ubi->wl_lock);
 
 	if (!enough_free_pebs(ubi) && !producing) {
-		if (ubi->works_count == 0) {
-			ubi_err(ubi, "no free eraseblocks");
-			ubi_assert(list_empty(&ubi->works));
-			spin_unlock(&ubi->wl_lock);
-			return -ENOSPC;
-		}
-
 		err = produce_free_peb(ubi);
 		if (err < 0) {
+			ubi_err(ubi, "unable to produce free eraseblocks: %i", err);
 			spin_unlock(&ubi->wl_lock);
 			return err;
 		}
