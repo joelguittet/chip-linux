@@ -301,27 +301,33 @@ static struct tv_mode *sun4i_tv_find_tv_by_mode(struct drm_display_mode *mode)
 		DRM_DEBUG_DRIVER("Comparing mode %s vs %s",
 				 mode->name, tv_mode->name);
 
-		if (!strcmp(mode->name, tv_mode->name))
+		if (!strncmp(mode->name, tv_mode->name, strlen(tv_mode->name)))
 			return tv_mode;
 	}
 
 	/* Then by number of lines */
 	for (i = 0; i < ARRAY_SIZE(tv_modes); i++) {
 		struct tv_mode *tv_mode = &tv_modes[i];
+		int j;
 
-		DRM_DEBUG_DRIVER("Comparing mode %s vs %s (X: %d vs %d)",
-				 mode->name, tv_mode->name,
-				 mode->vdisplay, tv_mode->vdisplay);
+		for (j = 0; j < 20; j += 5) {
+			u32 vdisplay = tv_mode->vdisplay * (100 - j) / 100;
 
-		if (mode->vdisplay == tv_mode->vdisplay)
-			return tv_mode;
+			DRM_DEBUG_DRIVER("Comparing mode with %s (%d) (X: %d vs %d)",
+					 tv_mode->name, j,
+					 vdisplay, tv_mode->vdisplay);
+
+			if (vdisplay == tv_mode->vdisplay)
+				return tv_mode;
+		}
 	}
 
 	return NULL;
 }
 
 static void sun4i_tv_mode_to_drm_mode(struct tv_mode *tv_mode,
-				      struct drm_display_mode *mode)
+				      struct drm_display_mode *mode,
+				      int overscan)
 {
 	DRM_DEBUG_DRIVER("Creating mode %s\n", mode->name);
 
@@ -329,12 +335,12 @@ static void sun4i_tv_mode_to_drm_mode(struct tv_mode *tv_mode,
 	mode->clock = 13500;
 	mode->flags = DRM_MODE_FLAG_INTERLACE;
 
-	mode->hdisplay = tv_mode->hdisplay;
+	mode->hdisplay = tv_mode->hdisplay * (100 - overscan) / 100;
 	mode->hsync_start = mode->hdisplay + tv_mode->hfront_porch;
 	mode->hsync_end = mode->hsync_start + tv_mode->hsync_len;
 	mode->htotal = mode->hsync_end  + tv_mode->hback_porch;
 
-	mode->vdisplay = tv_mode->vdisplay;
+	mode->vdisplay = tv_mode->vdisplay * (100 - overscan) / 100;
 	mode->vsync_start = mode->vdisplay + tv_mode->vfront_porch;
 	mode->vsync_end = mode->vsync_start + tv_mode->vsync_len;
 	mode->vtotal = mode->vsync_end  + tv_mode->vback_porch;
@@ -352,10 +358,10 @@ static int sun4i_tv_atomic_check(struct drm_encoder *encoder,
 		return -EINVAL;
 
 	state->display_x_size = tv_mode->hdisplay;
-	state->plane_x_offset = 0;
+	state->plane_x_offset = (tv_mode->hdisplay - mode->hdisplay) / 2;
 
 	state->display_y_size = tv_mode->vdisplay;
-	state->plane_y_offset = 0;
+	state->plane_y_offset = (tv_mode->vdisplay - mode->vdisplay) / 2;
 
 	return 0;
 }
@@ -403,7 +409,7 @@ static void sun4i_tv_mode_set(struct drm_encoder *encoder,
 	struct tv_mode *tv_mode = sun4i_tv_find_tv_by_mode(mode);
 	struct drm_display_mode tv_drm_mode;
 
-	sun4i_tv_mode_to_drm_mode(tv_mode, &tv_drm_mode);
+	sun4i_tv_mode_to_drm_mode(tv_mode, &tv_drm_mode, 0);
 	drm_mode_set_crtcinfo(&tv_drm_mode, CRTC_INTERLACE_HALVE_V);
 
 	sun4i_tcon1_mode_set(tcon, &tv_drm_mode);
@@ -525,16 +531,24 @@ static int sun4i_tv_comp_get_modes(struct drm_connector *connector)
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(tv_modes); i++) {
-		struct drm_display_mode *mode = drm_mode_create(connector->dev);
 		struct tv_mode *tv_mode = &tv_modes[i];
+		int j;
 
-		strcpy(mode->name, tv_mode->name);
+		for (j = 0; j < 20; j += 5) {
+			struct drm_display_mode *mode = drm_mode_create(connector->dev);
 
-		sun4i_tv_mode_to_drm_mode(tv_mode, mode);
-		drm_mode_probed_add(connector, mode);
+			if (j)
+				sprintf(mode->name, "%s%d", tv_mode->name,
+					j);
+			else
+				strcpy(mode->name, tv_mode->name);
+
+			sun4i_tv_mode_to_drm_mode(tv_mode, mode, j);
+			drm_mode_probed_add(connector, mode);
+		}
 	}
 
-	return i;
+	return i * 4;
 }
 
 static int sun4i_tv_comp_mode_valid(struct drm_connector *connector,
