@@ -401,8 +401,13 @@ static void sun4i_tv_mode_set(struct drm_encoder *encoder,
 	struct sun4i_drv *drv = tv->drv;
 	struct sun4i_tcon *tcon = drv->tcon;
 	const struct tv_mode *tv_mode = sun4i_tv_find_tv_by_mode(mode);
+	struct drm_display_mode tv_drm_mode = { 0 };
 
-	sun4i_tcon1_mode_set(tcon, mode);
+	strcpy(tv_drm_mode.name, "TV");
+	sun4i_tv_mode_to_drm_mode(tv_mode, &tv_drm_mode);
+	drm_mode_set_crtcinfo(&tv_drm_mode, CRTC_INTERLACE_HALVE_V);
+
+	sun4i_tcon1_mode_set(tcon, &tv_drm_mode);
 
 	/* Enable and map the DAC to the output */
 	regmap_update_bits(tv->regs, SUN4I_TVE_EN_REG,
