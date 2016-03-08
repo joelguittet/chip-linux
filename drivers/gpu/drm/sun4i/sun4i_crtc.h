@@ -20,9 +20,25 @@ struct sun4i_crtc {
 	struct sun4i_drv		*drv;
 };
 
+struct sun4i_crtc_state {
+	struct drm_crtc_state	base;
+
+	u32			display_x_size;
+	u32			display_y_size;
+
+	u32			plane_x_offset;
+	u32			plane_y_offset;
+};
+
 static inline struct sun4i_crtc *drm_crtc_to_sun4i_crtc(struct drm_crtc *crtc)
 {
 	return container_of(crtc, struct sun4i_crtc, crtc);
+}
+
+static inline struct sun4i_crtc_state *
+drm_crtc_state_to_sun4i_crtc_state(struct drm_crtc_state *state)
+{
+	return container_of(state, struct sun4i_crtc_state, base);
 }
 
 struct sun4i_crtc *sun4i_crtc_init(struct drm_device *drm);
