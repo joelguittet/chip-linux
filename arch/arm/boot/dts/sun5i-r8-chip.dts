@@ -65,6 +65,32 @@
 		stdout-path = "serial0:115200n8";
 	};
 
+	/*
+	 * This is needed because of the UBIFS page migration issue we
+	 * currently face.
+	 *
+	 * Instead of using the default DMA pool CMA allocates and
+	 * that can be reused (and hence might contain UBIFS pages
+	 * that wouldn't be able to migrate), we declare a generic
+	 * memory pool that CMA can use, but will not allow other
+	 * users to allocate in it when unused.
+	 *
+	 * This is suboptimal, but it seems to be a good workaround
+	 * until we figure out a good fix.
+	 */
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		cma {
+			compatible = "shared-dma-pool";
+			size = <0x2000000>;
+			no-map;
+			linux,cma-default;
+		};
+	};
+
 	leds {
 		compatible = "gpio-leds";
 
