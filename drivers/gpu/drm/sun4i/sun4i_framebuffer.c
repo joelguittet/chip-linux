@@ -11,10 +11,84 @@
  */
 
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_crtc.h>
+#include <drm/drm_fb_helper.h>
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drmP.h>
 
 #include "sun4i_drv.h"
+
+struct sun4i_fbdev {
+	struct drm_fb_helper	fb_helper;
+	struct drm_fb_cma	*fb;
+};
+
+extern const struct drm_fb_helper_funcs drm_fb_cma_helper_funcs;
+
+struct sun4i_fbdev *sun4i_fbdev_cma_init(struct drm_device *dev,
+					 unsigned int preferred_bpp,
+					 unsigned int num_crtc,
+					 unsigned int max_conn_count)
+{
+	struct sun4i_fbdev *sun4i_fbdev;
+	struct drm_fb_helper *helper;
+	struct drm_connector *connector;
+	struct drm_connector *rgbcon = NULL, *tvcon = NULL;
+	int ret;
+
+	sun4i_fbdev = kzalloc(sizeof(*sun4i_fbdev), GFP_KERNEL);
+	if (!sun4i_fbdev) {
+		dev_err(dev->dev, "Failed to allocate drm fbdev.\n");
+		return ERR_PTR(-ENOMEM);
+	}
+
+	helper = &sun4i_fbdev->fb_helper;
+
+	drm_fb_helper_prepare(dev, helper, &drm_fb_cma_helper_funcs);
+
+	ret = drm_fb_helper_init(dev, helper, num_crtc, max_conn_count);
+	if (ret < 0) {
+		dev_err(dev->dev, "Failed to initialize drm fb helper.\n");
+		goto err_free;
+	}
+
+	mutex_lock(&dev->mode_config.mutex);
+	drm_for_each_connector(connector, dev) {
+		switch (connector->connector_type) {
+		case DRM_MODE_CONNECTOR_Unknown:
+			rgbcon = connector;
+			break;
+		case DRM_MODE_CONNECTOR_Composite:
+			tvcon = connector;
+			break;
+		default:
+			break;
+		}
+	}
+
+	ret = drm_fb_helper_add_one_connector(helper, rgbcon ? rgbcon : tvcon);
+	if (ret < 0) {
+		dev_err(dev->dev, "Failed to add connectors.\n");
+		goto err_drm_fb_helper_fini;
+
+	}
+	mutex_unlock(&dev->mode_config.mutex);
+
+	ret = drm_fb_helper_initial_config(helper, preferred_bpp);
+	if (ret < 0) {
+		dev_err(dev->dev, "Failed to set initial hw configuration.\n");
+		goto err_drm_fb_helper_fini;
+	}
+
+	return sun4i_fbdev;
+
+err_drm_fb_helper_fini:
+	drm_fb_helper_fini(helper);
+err_free:
+	kfree(sun4i_fbdev);
+
+	return ERR_PTR(ret);
+}
 
 static void sun4i_de_output_poll_changed(struct drm_device *drm)
 {
@@ -31,7 +105,7 @@ static const struct drm_mode_config_funcs sun4i_de_mode_config_funcs = {
 	.fb_create		= drm_fb_cma_create,
 };
 
-struct drm_fbdev_cma *sun4i_framebuffer_init(struct drm_device *drm)
+struct sun4i_fbdev *sun4i_framebuffer_init(struct drm_device *drm)
 {
 	drm_mode_config_reset(drm);
 
@@ -40,7 +114,7 @@ struct drm_fbdev_cma *sun4i_framebuffer_init(struct drm_device *drm)
 
 	drm->mode_config.funcs = &sun4i_de_mode_config_funcs;
 
-	return drm_fbdev_cma_init(drm, 32,
+	return sun4i_fbdev_cma_init(drm, 32,
 				  drm->mode_config.num_crtc,
 				  drm->mode_config.num_connector);
 }
