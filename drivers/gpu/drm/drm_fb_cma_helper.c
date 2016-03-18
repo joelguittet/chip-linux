@@ -304,9 +304,10 @@ err_drm_gem_cma_free_object:
 	return ret;
 }
 
-static const struct drm_fb_helper_funcs drm_fb_cma_helper_funcs = {
+const struct drm_fb_helper_funcs drm_fb_cma_helper_funcs = {
 	.fb_probe = drm_fbdev_cma_create,
 };
+EXPORT_SYMBOL(drm_fb_cma_helper_funcs);
 
 /**
  * drm_fbdev_cma_init() - Allocate and initializes a drm_fbdev_cma struct
