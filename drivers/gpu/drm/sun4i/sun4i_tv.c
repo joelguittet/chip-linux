@@ -140,6 +140,7 @@ struct resync_parameters {
 
 struct tv_mode {
 	char		*name;
+	bool		preferred;
 
 	u32		mode;
 	u32		chroma_freq;
@@ -214,6 +215,7 @@ struct resync_parameters pal_resync_parameters = {
 struct tv_mode tv_modes[] = {
 	{
 		.name		= "NTSC",
+		.preferred	= true,
 		.mode		= SUN4I_TVE_CFG0_RES_480i,
 		.chroma_freq	= 0x21f07c1f,
 		.yc_en		= true,
@@ -344,6 +346,9 @@ static void sun4i_tv_mode_to_drm_mode(struct tv_mode *tv_mode,
 	mode->vsync_start = mode->vdisplay + tv_mode->vfront_porch;
 	mode->vsync_end = mode->vsync_start + tv_mode->vsync_len;
 	mode->vtotal = mode->vsync_end  + tv_mode->vback_porch;
+
+	if (!overscan && tv_mode->preferred)
+		mode->type |= DRM_MODE_TYPE_PREFERRED;
 }
 
 static int sun4i_tv_atomic_check(struct drm_encoder *encoder,
