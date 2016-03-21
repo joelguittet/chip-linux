@@ -400,3 +400,85 @@
 	usb0_vbus-supply = <&usb0_vbus>;
 	usb1_vbus-supply = <&vcc_5v0>;
 };
+
+&i2c1 {
+        pinctrl-names = "default";
+        pinctrl-0 = <&i2c1_pins_a>;
+        status = "okay";
+        /* keyboard scanner */
+        tca8418@34 {
+                compatible = "ti,tca8418";
+                reg = <0x34>;
+                /* the interrupt is specified as:
+                        The first cell is the number of the bank
+                        The second cell is the interrupt inside that bank
+                        The third cell is used to specify flags
+                */
+                interrupt-parent = <&pio>;
+                interrupts = <6 1 IRQ_TYPE_EDGE_FALLING>;    /* AP-EINT1 */
+                keypad,num-rows = <6>;
+                keypad,num-columns = <10>;
+                keypad,autorepeat;
+                linux,keymap = <
+                        0x00000002
+                        0x00010003
+                        0x00020004
+                        0x00030005
+                        0x00040006
+                        0x00050007
+                        0x00060008
+                        0x00070009
+                        0x0008000a
+                        0x0009000b
+                        0x01000010
+                        0x01010011
+                        0x01020012
+                        0x01030013
+                        0x01040014
+                        0x01050015
+                        0x01060016
+                        0x01070017
+                        0x01080018
+                        0x01090019
+                        0x0200001e
+                        0x0201001f
+                        0x02020020
+                        0x02030021
+                        0x02040022
+                        0x02050023
+                        0x02060024
+                        0x02070025
+                        0x02080026
+                        0x0209001c
+                        0x0300002a
+                        0x0301002c
+                        0x0302002d
+                        0x0303002e
+                        0x0304002f
+                        0x03050030
+                        0x03060031
+                        0x03070032
+                        0x03080067
+                        0x0309006c
+                        0x0400001d
+                        0x04010064
+                        0x04020038
+                        0x04030039
+                        0x0404000f
+                        0x04050035
+                        0x04060036
+                        0x04080069
+                        0x0409006a
+                        0x05000029
+                        0x0501004a
+                        0x0502004e
+                        0x0503000e
+                        0x05040034
+                >;
+        };
+};
+
+
+&rtp {
+        allwinner,ts-attached;
+};
