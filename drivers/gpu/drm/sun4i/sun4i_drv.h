@@ -25,6 +25,11 @@ struct sun4i_drv {
 	struct drm_fbdev_cma	*fbdev;
 
 	struct sun4i_layer	**layers;
+
+	struct {
+		wait_queue_head_t	wait;
+		bool			pending;
+	} commit;
 };
 
 #endif /* _SUN4I_DRV_H_ */
