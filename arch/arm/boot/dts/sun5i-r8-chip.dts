@@ -304,7 +304,9 @@
 		nand-ecc-mode = "hw";
 		nand-ecc-step-size = <1024>;
 		nand-ecc-strength = <56>;
+    /*
 		nand-on-flash-bbt;
+    */
 		allwinner,randomize;
 
 		spl@0 {
