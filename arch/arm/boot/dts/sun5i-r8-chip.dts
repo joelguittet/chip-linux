@@ -199,7 +199,6 @@
 		reg = <0>;
 		allwinner,rb = <0>;
 		nand-ecc-mode = "hw";
-		nand-on-flash-bbt;
 
 		spl@0 {
 			label = "SPL";
