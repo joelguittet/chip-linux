@@ -505,6 +505,35 @@ struct ubi_work *ubi_alloc_erase_work(struct ubi_device *ubi,
 }
 
 /**
+ * prepare_erase_work - prepare an erase work.
+ * @ubi: UBI device description object
+ * @e: the WL entry of the physical eraseblock to erase
+ * @torture: if the physical eraseblock has to be tortured
+ *
+ * This function returns a struct ubi_work in case of success
+ * and an ERR_PTR(%-ENOMEM) in case of failure.
+ */
+static struct ubi_work *prepare_erase_work(struct ubi_device *ubi,
+					   struct ubi_wl_entry *e,
+					   int torture)
+{
+	struct ubi_work *wl_wrk;
+
+	ubi_assert(e);
+	ubi_assert(!ubi->consolidated || !ubi->consolidated[e->pnum]);
+
+	wl_wrk = ubi_alloc_erase_work(ubi, e, torture);
+	if (!wl_wrk)
+		return ERR_PTR(-ENOMEM);
+
+	wl_wrk->func = &erase_worker;
+	wl_wrk->e = e;
+	wl_wrk->torture = torture;
+
+	return wl_wrk;
+}
+
+/**
  * schedule_erase - schedule an erase work.
  * @ubi: UBI device description object
  * @e: the WL entry of the physical eraseblock to erase
@@ -514,26 +543,19 @@ struct ubi_work *ubi_alloc_erase_work(struct ubi_device *ubi,
  * failure.
  */
 static int schedule_erase(struct ubi_device *ubi, struct ubi_wl_entry *e,
-			  int torture, bool nested)
+			  int torture)
 {
 	struct ubi_work *wl_wrk;
-
-	ubi_assert(e);
-	ubi_assert(!ubi->consolidated || !ubi->consolidated[e->pnum]);
 
 	dbg_wl("schedule erasure of PEB %d, EC %d, torture %d",
 	       e->pnum, e->ec, torture);
 
-	wl_wrk = ubi_alloc_erase_work(ubi, e, torture);
-	if (!wl_wrk)
-		return -ENOMEM;
+	wl_wrk = prepare_erase_work(ubi, e, torture);
 
-	wl_wrk->func = &erase_worker;
-	wl_wrk->e = e;
-	wl_wrk->torture = torture;
+	if (IS_ERR(wl_wrk))
+		return PTR_ERR(wl_wrk);
 
 	ubi_schedule_work(ubi, wl_wrk);
-
 	return 0;
 }
 
