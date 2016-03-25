@@ -969,6 +969,7 @@ int ubi_wl_put_fm_peb(struct ubi_device *ubi, struct ubi_wl_entry *used_e,
 		      int lnum, int torture);
 void ubi_refill_pools(struct ubi_device *ubi);
 int ubi_ensure_anchor_pebs(struct ubi_device *ubi);
+int ubi_bitflip_check(struct ubi_device *ubi, int pnum, int force_scrub);
 
 /* work.c */
 int ubi_thread(void *u);
