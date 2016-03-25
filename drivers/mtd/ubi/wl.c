@@ -102,6 +102,7 @@
 #include <linux/crc32.h>
 #include <linux/freezer.h>
 #include <linux/kthread.h>
+#include <linux/uaccess.h>
 #include "ubi.h"
 #include "wl.h"
 
@@ -423,6 +424,73 @@ static void ubi_wl_clear_rc(struct ubi_wl_entry *e)
 #ifdef CONFIG_MTD_UBI_READ_COUNTER
 	e->rc = 0;
 #endif
+}
+
+static void ubi_wl_get_rc(struct ubi_wl_entry *e, struct ubi_stats_entry *se)
+{
+#ifdef CONFIG_MTD_UBI_READ_COUNTER
+	se->rc = e->rc;
+#else
+	se->rc = -1;
+#endif
+}
+
+static int ubi_wl_fill_stats_entry(struct ubi_device *ubi,
+				   struct ubi_stats_entry *se, int pnum)
+{
+	struct ubi_wl_entry *e;
+
+	spin_lock(&ubi->wl_lock);
+	e = ubi->lookuptbl[pnum];
+	if (e) {
+		se->pnum = pnum;
+		se->ec = e->ec;
+		ubi_wl_get_rc(e, se);
+	}
+	spin_unlock(&ubi->wl_lock);
+
+	return e ? 0 : -1;
+}
+
+int ubi_wl_report_stats(struct ubi_device *ubi, struct ubi_stats_req *req,
+			struct ubi_stats_entry __user *se)
+{
+	int i, pnum, peb_end, peb_start;
+	struct ubi_stats_entry tmp_se;
+	size_t write_len;
+	int n = 0;
+
+	pnum = req->req_pnum;
+	if (pnum != -1) {
+		if (pnum < 0 || pnum >= ubi->peb_count)
+			return -EINVAL;
+
+		peb_start = pnum;
+		peb_end = pnum + 1;
+		write_len = sizeof(*se);
+	} else {
+		peb_start = 0;
+		peb_end = ubi->peb_count;
+		write_len = sizeof(*se) * ubi->good_peb_count;
+	}
+
+	if (write_len > req->req_len - sizeof(*req))
+		return -EFAULT;
+
+	if (!access_ok(VERIFY_WRITE, se, req->req_len - sizeof(*req) + write_len))
+		return -EFAULT;
+
+	for (i = peb_start; i < peb_end; i++) {
+		if (ubi_wl_fill_stats_entry(ubi, &tmp_se, i) == 0) {
+			if (__copy_to_user(se, &tmp_se, sizeof(tmp_se)))
+				return -EFAULT;
+
+			se++;
+			n++;
+		}
+	}
+
+	return n;
 }
 
 /**
