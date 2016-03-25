@@ -399,6 +399,32 @@ static int prot_queue_del(struct ubi_device *ubi, int pnum)
 	return 0;
 }
 
+void ubi_wl_update_rc(struct ubi_device *ubi, int pnum)
+{
+#ifdef CONFIG_MTD_UBI_READ_COUNTER
+	struct ubi_wl_entry *e;
+
+	/*
+	 * WL not initialized yet.
+	 */
+	if (!ubi->lookuptbl)
+		return;
+
+	spin_lock(&ubi->wl_lock);
+	e = ubi->lookuptbl[pnum];
+	if (e)
+		e->rc++;
+	spin_unlock(&ubi->wl_lock);
+#endif
+}
+
+static void ubi_wl_clear_rc(struct ubi_wl_entry *e)
+{
+#ifdef CONFIG_MTD_UBI_READ_COUNTER
+	e->rc = 0;
+#endif
+}
+
 /**
  * sync_erase - synchronously erase a physical eraseblock.
  * @ubi: UBI device description object
@@ -428,6 +454,8 @@ static int sync_erase(struct ubi_device *ubi, struct ubi_wl_entry *e,
 	err = ubi_io_sync_erase(ubi, e->pnum, torture);
 	if (err < 0)
 		goto out_free;
+
+	ubi_wl_clear_rc(e);
 
 	ec += err;
 	if (ec > UBI_MAX_ERASECOUNTER) {

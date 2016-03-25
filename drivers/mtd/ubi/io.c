@@ -224,6 +224,7 @@ static int __ubi_io_read(const struct ubi_device *ubi, void *buf, int pnum,
 	*((uint8_t *)buf) ^= 0xFF;
 
 retry:
+	ubi_wl_update_rc((struct ubi_device *)ubi, pnum);
 	err = ubi_io_mtd_read(ubi, buf, pnum, offset, len, &read, raw);
 	if (err) {
 		const char *errstr = mtd_is_eccerr(err) ? " (ECC error)" : "";
