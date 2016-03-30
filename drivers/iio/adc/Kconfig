@@ -434,6 +434,16 @@ config STX104
 	  The base port addresses for the devices may be configured via the base
 	  array module parameter.
 
+config SUN4I_LRADC
+	tristate "Allwinner LRADC driver"
+	depends on ARCH_SUNXI || COMPILE_TEST
+	select IIO_TRIGGER
+	help
+	  Say yes here to build support for the LRADC found on Allwinner SoCs.
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called sun4i_lradc.
+
 config TI_ADC081C
 	tristate "Texas Instruments ADC081C/ADC101C/ADC121C family"
 	depends on I2C
