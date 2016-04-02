@@ -166,6 +166,7 @@ int sun4i_dclk_create(struct device *dev, struct sun4i_tcon *tcon)
 	init.ops = &sun4i_dclk_ops;
 	init.parent_names = &parent_name;
 	init.num_parents = 1;
+	init.flags = CLK_SET_RATE_PARENT;
 
 	dclk->regmap = tcon->regs;
 	dclk->hw.init = &init;
