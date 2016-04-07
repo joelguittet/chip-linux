@@ -47,6 +47,7 @@
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/input/input.h>
 
 / {
 	model = "NextThing C.H.I.P.";
@@ -448,60 +449,65 @@
                 keypad,num-columns = <10>;
                 keypad,autorepeat;
                 linux,keymap = <
-                        0x00000002
-                        0x00010003
-                        0x00020004
-                        0x00030005
-                        0x00040006
-                        0x00050007
-                        0x00060008
-                        0x00070009
-                        0x0008000a
-                        0x0009000b
-                        0x01000010
-                        0x01010011
-                        0x01020012
-                        0x01030013
-                        0x01040014
-                        0x01050015
-                        0x01060016
-                        0x01070017
-                        0x01080018
-                        0x01090019
-                        0x0200001e
-                        0x0201001f
-                        0x02020020
-                        0x02030021
-                        0x02040022
-                        0x02050023
-                        0x02060024
-                        0x02070025
-                        0x02080026
-                        0x0209001c
-                        0x0300002a
-                        0x0301002c
-                        0x0302002d
-                        0x0303002e
-                        0x0304002f
-                        0x03050030
-                        0x03060031
-                        0x03070032
-                        0x03080067
-                        0x0309006c
-                        0x0400001d
-                        0x04010064
-                        0x04020038
-                        0x04030039
-                        0x0404000f
-                        0x04050035
-                        0x04060036
-                        0x04080069
-                        0x0409006a
-                        0x05000001
-                        0x0501004a
-                        0x0502004e
-                        0x0503000e
-                        0x05040034
+			MATRIX_KEY(0, 0, 13)
+			MATRIX_KEY(0, 1, KEY_1)
+			MATRIX_KEY(0, 2, KEY_2)
+			MATRIX_KEY(0, 3, KEY_3)
+			MATRIX_KEY(0, 4, KEY_4)
+			MATRIX_KEY(0, 5, KEY_5)
+			MATRIX_KEY(0, 6, KEY_6)
+			MATRIX_KEY(0, 7, KEY_7)
+			MATRIX_KEY(0, 8, KEY_8)
+			MATRIX_KEY(0, 9, KEY_9)
+
+			MATRIX_KEY(1, 0, KEY_Q)
+			MATRIX_KEY(1, 1, KEY_W)
+			MATRIX_KEY(1, 2, KEY_E)
+			MATRIX_KEY(1, 3, KEY_R)
+			MATRIX_KEY(1, 4, KEY_T)
+			MATRIX_KEY(1, 5, KEY_Y)
+			MATRIX_KEY(1, 6, KEY_U)
+			MATRIX_KEY(1, 7, KEY_I)
+			MATRIX_KEY(1, 8, KEY_O)
+			MATRIX_KEY(1, 9, KEY_P)
+
+			MATRIX_KEY(2, 0, KEY_A)
+			MATRIX_KEY(2, 1, KEY_S)
+			MATRIX_KEY(2, 2, KEY_D)
+			MATRIX_KEY(2, 3, KEY_F)
+			MATRIX_KEY(2, 4, KEY_G)
+			MATRIX_KEY(2, 5, KEY_H)
+			MATRIX_KEY(2, 6, KEY_J)
+			MATRIX_KEY(2, 7, KEY_K)
+			MATRIX_KEY(2, 8, KEY_L)
+			MATRIX_KEY(2, 9, KEY_ENTER)
+
+			MATRIX_KEY(3, 0, KEY_TAB)
+			MATRIX_KEY(3, 1, KEY_Z)
+			MATRIX_KEY(3, 2, KEY_X)
+			MATRIX_KEY(3, 3, KEY_C)
+			MATRIX_KEY(3, 4, KEY_V)
+			MATRIX_KEY(3, 5, KEY_B)
+			MATRIX_KEY(3, 6, KEY_N)
+			MATRIX_KEY(3, 7, KEY_M)
+			MATRIX_KEY(3, 8, KEY_UP)
+			MATRIX_KEY(3, 9, KEY_DOWN)
+
+			MATRIX_KEY(4, 0, KEY_ESC)
+			MATRIX_KEY(4, 1, KEY_RIGHTALT)
+			MATRIX_KEY(4, 2, KEY_LEFTALT)
+			MATRIX_KEY(4, 3, KEY_SPACE)
+			MATRIX_KEY(4, 4, KEY_RIGHTCTRL)
+			MATRIX_KEY(4, 5, KEY_SLASH)
+			MATRIX_KEY(4, 6, KEY_RIGHTSHIFT)
+			MATRIX_KEY(4, 8, KEY_LEFT)
+			MATRIX_KEY(4, 9, KEY_RIGHT)
+
+			MATRIX_KEY(5, 0, KEY_LEFTSHIFT)
+			MATRIX_KEY(5, 1, KEY_0)
+			MATRIX_KEY(5, 2, KEY_KPMINUS )
+			MATRIX_KEY(5, 3, KEY_BACKSPACE)
+			MATRIX_KEY(5, 4, KEY_DOT)
                 >;
         };
 };
