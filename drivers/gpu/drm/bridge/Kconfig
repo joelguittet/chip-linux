@@ -17,6 +17,10 @@ config DRM_ANALOGIX_ANX78XX
 	  the HDMI output of an application processor to MyDP
 	  or DisplayPort.
 
+config DRM_CHRONTEL_CH7033
+	tristate "Chrontel CH7033 HDMI Bridge support"
+	select DRM_KMS_HELPER
+
 config DRM_DUMB_VGA_DAC
 	tristate "Dumb VGA DAC Bridge support"
 	depends on OF
