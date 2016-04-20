@@ -57,6 +57,7 @@ struct sun4i_fbdev *sun4i_fbdev_cma_init(struct drm_device *dev,
 	drm_for_each_connector(connector, dev) {
 		switch (connector->connector_type) {
 		case DRM_MODE_CONNECTOR_Unknown:
+		case DRM_MODE_CONNECTOR_HDMIA:
 			rgbcon = connector;
 			break;
 		case DRM_MODE_CONNECTOR_Composite:
