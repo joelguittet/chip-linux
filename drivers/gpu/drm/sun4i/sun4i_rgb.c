@@ -52,59 +52,6 @@ static int sun4i_rgb_get_modes(struct drm_connector *connector)
 	return drm_panel_get_modes(tcon->panel);
 }
 
-static int sun4i_rgb_mode_valid(struct drm_connector *connector,
-				struct drm_display_mode *mode)
-{
-	struct sun4i_rgb *rgb = drm_connector_to_sun4i_rgb(connector);
-	struct sun4i_drv *drv = rgb->drv;
-	struct sun4i_tcon *tcon = drv->tcon;
-	u32 hsync = mode->hsync_end - mode->hsync_start;
-	u32 vsync = mode->vsync_end - mode->vsync_start;
-	unsigned long rate = mode->crtc_clock * 1000;
-	long rounded_rate;
-
-	DRM_DEBUG_DRIVER("Validating modes...\n");
-
-	if (hsync < 1)
-		return MODE_HSYNC_NARROW;
-
-	if (hsync > 0x3ff)
-		return MODE_HSYNC_WIDE;
-
-	if ((mode->hdisplay < 1) || (mode->htotal < 1))
-		return MODE_H_ILLEGAL;
-
-	if ((mode->hdisplay > 0x7ff) || (mode->htotal > 0xfff))
-		return MODE_BAD_HVALUE;
-
-	DRM_DEBUG_DRIVER("Horizontal parameters OK\n");
-
-	if (vsync < 1)
-		return MODE_VSYNC_NARROW;
-
-	if (vsync > 0x3ff)
-		return MODE_VSYNC_WIDE;
-
-	if ((mode->vdisplay < 1) || (mode->vtotal < 1))
-		return MODE_V_ILLEGAL;
-
-	if ((mode->vdisplay > 0x7ff) || (mode->vtotal > 0xfff))
-		return MODE_BAD_VVALUE;
-
-	DRM_DEBUG_DRIVER("Vertical parameters OK\n");
-
-	rounded_rate = clk_round_rate(tcon->dclk, rate);
-	if (rounded_rate < rate)
-		return MODE_CLOCK_LOW;
-
-	if (rounded_rate > rate)
-		return MODE_CLOCK_HIGH;
-
-	DRM_DEBUG_DRIVER("Clock rate OK\n");
-
-	return MODE_OK;
-}
-
 static struct drm_encoder *
 sun4i_rgb_best_encoder(struct drm_connector *connector)
 {
@@ -116,7 +63,6 @@ sun4i_rgb_best_encoder(struct drm_connector *connector)
 
 static struct drm_connector_helper_funcs sun4i_rgb_con_helper_funcs = {
 	.get_modes	= sun4i_rgb_get_modes,
-	.mode_valid	= sun4i_rgb_mode_valid,
 	.best_encoder	= sun4i_rgb_best_encoder,
 };
 
@@ -213,9 +159,63 @@ static void sun4i_rgb_encoder_mode_set(struct drm_encoder *encoder,
 	clk_set_phase(tcon->dclk, 120);
 }
 
+static int sun4i_rgb_mode_valid(struct drm_encoder *encoder,
+				struct drm_display_mode *mode)
+{
+	struct sun4i_rgb *rgb = drm_encoder_to_sun4i_rgb(encoder);
+	struct sun4i_drv *drv = rgb->drv;
+	struct sun4i_tcon *tcon = drv->tcon;
+	u32 hsync = mode->hsync_end - mode->hsync_start;
+	u32 vsync = mode->vsync_end - mode->vsync_start;
+	unsigned long rate = mode->crtc_clock * 1000;
+	long rounded_rate;
+
+	DRM_DEBUG_DRIVER("Validating modes...\n");
+
+	if (hsync < 1)
+		return MODE_HSYNC_NARROW;
+
+	if (hsync > 0x3ff)
+		return MODE_HSYNC_WIDE;
+
+	if ((mode->hdisplay < 1) || (mode->htotal < 1))
+		return MODE_H_ILLEGAL;
+
+	if ((mode->hdisplay > 0x7ff) || (mode->htotal > 0xfff))
+		return MODE_BAD_HVALUE;
+
+	DRM_DEBUG_DRIVER("Horizontal parameters OK\n");
+
+	if (vsync < 1)
+		return MODE_VSYNC_NARROW;
+
+	if (vsync > 0x3ff)
+		return MODE_VSYNC_WIDE;
+
+	if ((mode->vdisplay < 1) || (mode->vtotal < 1))
+		return MODE_V_ILLEGAL;
+
+	if ((mode->vdisplay > 0x7ff) || (mode->vtotal > 0xfff))
+		return MODE_BAD_VVALUE;
+
+	DRM_DEBUG_DRIVER("Vertical parameters OK\n");
+
+	rounded_rate = clk_round_rate(tcon->dclk, rate);
+	if (rounded_rate < rate)
+		return MODE_CLOCK_LOW;
+
+	if (rounded_rate > rate)
+		return MODE_CLOCK_HIGH;
+
+	DRM_DEBUG_DRIVER("Clock rate OK\n");
+
+	return MODE_OK;
+}
+
 static struct drm_encoder_helper_funcs sun4i_rgb_enc_helper_funcs = {
 	.atomic_check	= sun4i_rgb_atomic_check,
 	.mode_set	= sun4i_rgb_encoder_mode_set,
+	.mode_valid	= sun4i_rgb_mode_valid,
 	.disable	= sun4i_rgb_encoder_disable,
 	.enable		= sun4i_rgb_encoder_enable,
 };
