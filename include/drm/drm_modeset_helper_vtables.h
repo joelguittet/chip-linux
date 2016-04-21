@@ -503,6 +503,22 @@ struct drm_encoder_helper_funcs {
 			   struct drm_display_mode *adjusted_mode);
 
 	/**
+	 * @mode_valid:
+	 *
+	 * This callback is used to validate a mode at the encoder
+	 * level.  This is especially useful if you want to enable
+	 * bridges, where the bridge will be attached to the encoder
+	 * and will bypass the connectors ->mode_valid().
+	 *
+	 * RETURNS:
+	 *
+	 * Either MODE_OK or one of the failure reasons in enum
+	 * &drm_mode_status.
+	 */
+	enum drm_mode_status (*mode_valid)(struct drm_encoder *encoder,
+					   struct drm_display_mode *mode);
+
+	/**
 	 * @prepare:
 	 *
 	 * This callback should prepare the encoder for a subsequent modeset,
