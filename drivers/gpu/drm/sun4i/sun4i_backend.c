@@ -114,8 +114,8 @@ int sun4i_backend_update_layer_coord(struct sun4i_backend *backend,
 	struct sun4i_crtc_state *s_state = drm_crtc_state_to_sun4i_crtc_state(state->crtc->state);
 	u16 x, y;
 
-
-	DRM_DEBUG_DRIVER("Updating layer %d\n", layer);
+	DRM_DEBUG_DRIVER("Updating layer %d (with%s VGA hack)\n", layer,
+			 s_state->vga_hack ? "": "out");
 
 	if (plane->type == DRM_PLANE_TYPE_PRIMARY) {
 		DRM_DEBUG_DRIVER("Primary layer, updating global size W: %u H: %u\n",
@@ -135,7 +135,7 @@ int sun4i_backend_update_layer_coord(struct sun4i_backend *backend,
 	DRM_DEBUG_DRIVER("Layer size W: %u H: %u\n",
 			 state->crtc_w, state->crtc_h);
 	regmap_write(backend->regs, SUN4I_BACKEND_LAYSIZE_REG(layer),
-		     SUN4I_BACKEND_LAYSIZE(state->crtc_w,
+		     SUN4I_BACKEND_LAYSIZE(s_state->vga_hack ? state->crtc_w - 1 : state->crtc_w,
 					   state->crtc_h));
 
 	/* Set base coordinates */
@@ -188,6 +188,7 @@ int sun4i_backend_update_layer_buffer(struct sun4i_backend *backend,
 {
 	struct drm_plane_state *state = plane->state;
 	struct drm_framebuffer *fb = state->fb;
+	struct sun4i_crtc_state *s_state = drm_crtc_state_to_sun4i_crtc_state(state->crtc->state);
 	struct drm_gem_cma_object *gem;
 	u32 lo_paddr, hi_paddr;
 	dma_addr_t paddr;
@@ -203,6 +204,9 @@ int sun4i_backend_update_layer_buffer(struct sun4i_backend *backend,
 	paddr = gem->paddr + fb->offsets[0];
 	paddr += (state->src_x >> 16) * bpp;
 	paddr += (state->src_y >> 16) * fb->pitches[0];
+
+	if (s_state->vga_hack)
+		paddr += bpp;
 
 	DRM_DEBUG_DRIVER("Setting buffer address to 0x%x\n", paddr);
 

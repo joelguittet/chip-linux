@@ -103,6 +103,8 @@ struct drm_crtc_state *sun4i_crtc_duplicate_state(struct drm_crtc *crtc)
 	copy->plane_x_offset = state->plane_x_offset;
 	copy->plane_y_offset = state->plane_y_offset;
 
+	copy->vga_hack = state->vga_hack;
+
 	return &copy->base;
 }
 
