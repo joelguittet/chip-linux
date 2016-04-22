@@ -28,6 +28,8 @@ struct sun4i_crtc_state {
 
 	u32			plane_x_offset;
 	u32			plane_y_offset;
+
+	bool			vga_hack;
 };
 
 static inline struct sun4i_crtc *drm_crtc_to_sun4i_crtc(struct drm_crtc *crtc)
