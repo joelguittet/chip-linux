@@ -99,12 +99,18 @@ static int sun4i_rgb_atomic_check(struct drm_encoder *encoder,
 {
 	struct drm_display_mode *mode = &crtc_state->mode;
 	struct sun4i_crtc_state *state = drm_crtc_state_to_sun4i_crtc_state(crtc_state);
+	struct drm_connector *conn = conn_state->connector;
 
 	state->display_x_size = mode->hdisplay;
 	state->display_y_size = mode->vdisplay;
 
 	state->plane_x_offset = 0;
 	state->plane_y_offset = 0;
+
+	if (conn->connector_type == DRM_MODE_CONNECTOR_VGA)
+		state->vga_hack = true;
+	else
+		state->vga_hack = false;
 
 	return 0;
 }

@@ -368,6 +368,8 @@ static int sun4i_tv_atomic_check(struct drm_encoder *encoder,
 	state->display_y_size = tv_mode->vdisplay;
 	state->plane_y_offset = (tv_mode->vdisplay - mode->vdisplay) / 2;
 
+	state->vga_hack = false;
+
 	return 0;
 }
 
