@@ -429,7 +429,7 @@ static struct drm_panel *sun4i_tcon_find_panel(struct device_node *node)
 		return ERR_PTR(-EINVAL);
 	}
 
-	return of_drm_find_panel(remote);
+	return of_drm_find_panel(remote) ?: ERR_PTR(-EPROBE_DEFER);
 }
 
 static int sun4i_tcon_bind(struct device *dev, struct device *master,
@@ -522,12 +522,13 @@ static int sun4i_tcon_probe(struct platform_device *pdev)
 	 * Defer the probe.
 	 */
 	panel = sun4i_tcon_find_panel(node);
-	if (IS_ERR(panel)) {
-		/*
-		 * If we don't have a panel endpoint, just go on
-		 */
-		if (PTR_ERR(panel) != -ENODEV)
-			return -EPROBE_DEFER;
+
+	/*
+	 * If we don't have a panel endpoint, just go on
+	 */
+	if (PTR_ERR(panel) == -EPROBE_DEFER) {
+		DRM_DEBUG_DRIVER("Still waiting for our panel. Deferring...\n");
+		return -EPROBE_DEFER;
 	}
 
 	return component_add(&pdev->dev, &sun4i_tcon_ops);
