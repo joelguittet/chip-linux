@@ -1,3 +1,16 @@
+linux-4.3.0 (4.3.0-ntc-6) jessie; urgency=high
+
+  * add support for PocketCHIP keyboard
+  * do not write BBT to NAND
+  * enable PocketCHIP touchscreen
+  * enable MIDI
+  * enable PWM for PocketCHIP backlight
+  * enable DS2431 1-Wire driver 
+  * mtd: nand: sunxi: move sunxi_nfc_randomizer_disable() call
+  * mtd: nand: sunxi: fix timing setting 
+
+ -- Alex Kaplan <software@nextthing.co>  Wed, 11 May 2016 14:18:41 -0800
+
 linux-4.3.0 (4.3.0-ntc-4) jessie; urgency=high
 
   [ Boris Brezillon ]
