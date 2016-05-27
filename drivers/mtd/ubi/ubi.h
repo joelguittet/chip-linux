@@ -168,6 +168,7 @@ enum {
  * @u.list: link in the protection queue
  * @ec: erase counter
  * @pnum: physical eraseblock number
+ * @rc: number reads since last erasure
  *
  * This data structure is used in the WL sub-system. Each physical eraseblock
  * has a corresponding &struct wl_entry object which may be kept in different
@@ -180,6 +181,9 @@ struct ubi_wl_entry {
 	} u;
 	int ec;
 	int pnum;
+#ifdef CONFIG_MTD_UBI_READ_COUNTER
+	unsigned int rc;
+#endif
 };
 
 /**
@@ -597,6 +601,7 @@ struct ubi_device {
 	long long flash_size;
 	int peb_count;
 	int peb_size;
+	int usable_peb_size;
 	int bad_peb_count;
 	int good_peb_count;
 	int corr_peb_count;
@@ -608,7 +613,9 @@ struct ubi_device {
 	int leb_size;
 	int leb_start;
 	int ec_hdr_alsize;
+	int ec_rd_hdr_alsize;
 	int vid_hdr_alsize;
+	int vid_rd_hdr_alsize;
 	int vid_hdr_offset;
 	int vid_hdr_aloffset;
 	int vid_hdr_shift;
@@ -859,6 +866,9 @@ int ubi_wl_put_fm_peb(struct ubi_device *ubi, struct ubi_wl_entry *used_e,
 int ubi_is_erase_work(struct ubi_work *wrk);
 void ubi_refill_pools(struct ubi_device *ubi);
 int ubi_ensure_anchor_pebs(struct ubi_device *ubi);
+int ubi_bitrot_check(struct ubi_device *ubi, int pnum, int force_scrub);
+void ubi_wl_update_rc(struct ubi_device *ubi, int pnum);
+int ubi_wl_report_stats(struct ubi_device *ubi, struct ubi_stats_req *req, struct ubi_stats_entry __user *se);
 
 /* io.c */
 int ubi_io_read(const struct ubi_device *ubi, void *buf, int pnum, int offset,

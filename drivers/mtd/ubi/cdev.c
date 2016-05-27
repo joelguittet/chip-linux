@@ -963,6 +963,59 @@ static long ubi_cdev_ioctl(struct file *file, unsigned int cmd,
 		break;
 	}
 
+	/* Read a PEB */
+	case UBI_IOCRPEB:
+	{
+		int pnum;
+
+		err = get_user(pnum, (__user int32_t *)argp);
+		if (err) {
+			err = -EFAULT;
+			break;
+		}
+
+		err = ubi_bitrot_check(ubi, pnum, 0);
+		break;
+	}
+
+	/* Scrub a PEB */
+	case UBI_IOCSPEB:
+	{
+		int pnum;
+
+		err = get_user(pnum, (__user int32_t *)argp);
+		if (err) {
+			err = -EFAULT;
+			break;
+		}
+
+		err = ubi_bitrot_check(ubi, pnum, 1);
+		break;
+	}
+	/* Get UBI stats */
+	case UBI_IOCSTATS:
+	{
+		struct ubi_stats_req *req;
+		struct ubi_stats_req __user *ureq = argp;
+
+		req = kmalloc(sizeof(struct ubi_stats_req), GFP_KERNEL);
+		if (!req) {
+			err = -ENOMEM;
+			break;
+		}
+
+		err = copy_from_user(req, argp, sizeof(struct ubi_stats_req));
+		if (err) {
+			kfree(req);
+			err = -EFAULT;
+			break;
+		}
+
+		err = ubi_wl_report_stats(ubi, req, ureq->stats);
+		kfree(req);
+		break;
+	}
+
 	default:
 		err = -ENOTTY;
 		break;
