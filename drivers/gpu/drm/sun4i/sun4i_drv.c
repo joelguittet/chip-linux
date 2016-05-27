@@ -134,6 +134,7 @@ static int sun4i_drv_bind(struct device *dev)
 	}
 	drm->dev_private = drv;
 
+	init_waitqueue_head(&drv->commit.wait);
 	drm_vblank_init(drm, 1);
 	drm_mode_config_init(drm);
 

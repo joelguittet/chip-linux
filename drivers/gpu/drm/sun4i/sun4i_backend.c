@@ -22,6 +22,7 @@
 #include <linux/reset.h>
 
 #include "sun4i_backend.h"
+#include "sun4i_crtc.h"
 #include "sun4i_drv.h"
 
 static u32 sunxi_rgb2yuv_coef[12] = {
@@ -110,15 +111,19 @@ int sun4i_backend_update_layer_coord(struct sun4i_backend *backend,
 {
 	struct drm_plane_state *state = plane->state;
 	struct drm_framebuffer *fb = state->fb;
+	struct sun4i_crtc_state *s_state = drm_crtc_state_to_sun4i_crtc_state(state->crtc->state);
+	u16 x, y;
 
-	DRM_DEBUG_DRIVER("Updating layer %d\n", layer);
+	DRM_DEBUG_DRIVER("Updating layer %d (with%s VGA hack)\n", layer,
+			 s_state->vga_hack ? "": "out");
 
 	if (plane->type == DRM_PLANE_TYPE_PRIMARY) {
 		DRM_DEBUG_DRIVER("Primary layer, updating global size W: %u H: %u\n",
-				 state->crtc_w, state->crtc_h);
+				 s_state->display_x_size,
+				 s_state->display_y_size);
 		regmap_write(backend->regs, SUN4I_BACKEND_DISSIZE_REG,
-			     SUN4I_BACKEND_DISSIZE(state->crtc_w,
-						   state->crtc_h));
+			     SUN4I_BACKEND_DISSIZE(s_state->display_x_size,
+						   s_state->display_y_size));
 	}
 
 	/* Set the line width */
@@ -130,15 +135,16 @@ int sun4i_backend_update_layer_coord(struct sun4i_backend *backend,
 	DRM_DEBUG_DRIVER("Layer size W: %u H: %u\n",
 			 state->crtc_w, state->crtc_h);
 	regmap_write(backend->regs, SUN4I_BACKEND_LAYSIZE_REG(layer),
-		     SUN4I_BACKEND_LAYSIZE(state->crtc_w,
+		     SUN4I_BACKEND_LAYSIZE(s_state->vga_hack ? state->crtc_w - 1 : state->crtc_w,
 					   state->crtc_h));
 
 	/* Set base coordinates */
+	x = s_state->plane_x_offset + state->crtc_x;
+	y = s_state->plane_y_offset + state->crtc_y;
 	DRM_DEBUG_DRIVER("Layer coordinates X: %d Y: %d\n",
-			 state->crtc_x, state->crtc_y);
+			 x, y);
 	regmap_write(backend->regs, SUN4I_BACKEND_LAYCOOR_REG(layer),
-		     SUN4I_BACKEND_LAYCOOR(state->crtc_x,
-					   state->crtc_y));
+		     SUN4I_BACKEND_LAYCOOR(x, y));
 
 	return 0;
 }
@@ -182,6 +188,7 @@ int sun4i_backend_update_layer_buffer(struct sun4i_backend *backend,
 {
 	struct drm_plane_state *state = plane->state;
 	struct drm_framebuffer *fb = state->fb;
+	struct sun4i_crtc_state *s_state = drm_crtc_state_to_sun4i_crtc_state(state->crtc->state);
 	struct drm_gem_cma_object *gem;
 	u32 lo_paddr, hi_paddr;
 	dma_addr_t paddr;
@@ -197,6 +204,9 @@ int sun4i_backend_update_layer_buffer(struct sun4i_backend *backend,
 	paddr = gem->paddr + fb->offsets[0];
 	paddr += (state->src_x >> 16) * bpp;
 	paddr += (state->src_y >> 16) * fb->pitches[0];
+
+	if (s_state->vga_hack)
+		paddr += bpp;
 
 	DRM_DEBUG_DRIVER("Setting buffer address to 0x%x\n", paddr);
 
