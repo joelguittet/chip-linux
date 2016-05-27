@@ -162,6 +162,7 @@ struct sun4i_tcon {
 	/* Platform adjustments */
 	bool				has_mux;
 
+	struct drm_bridge		*bridge;
 	struct drm_panel		*panel;
 };
 
