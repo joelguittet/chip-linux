@@ -629,35 +629,6 @@ repeat:
 	spin_unlock(&ubi->wl_lock);
 }
 
-static bool wl_work_suspended(struct ubi_device *ubi)
-{
-	return ubi->thread_suspended || !ubi->thread_enabled;
-}
-
-/**
- * __schedule_ubi_work - schedule a work.
- * @ubi: UBI device description object
- * @wrk: the work to schedule
- *
- * This function adds a work defined by @wrk to the tail of the pending works
- * list. Can only be used if ubi->work_mutex is already held.
- */
-static void __schedule_ubi_work(struct ubi_device *ubi, struct ubi_work *wrk)
-{
-	ubi_assert(ubi->thread_enabled);
-
-	spin_lock(&ubi->wl_lock);
-	INIT_LIST_HEAD(&wrk->list);
-	kref_init(&wrk->ref);
-	init_completion(&wrk->comp);
-	list_add_tail(&wrk->list, &ubi->works);
-	ubi_assert(ubi->works_count >= 0);
-	ubi->works_count += 1;
-	if (!wl_work_suspended(ubi) && !ubi_dbg_is_bgt_disabled(ubi))
-		wake_up_process(ubi->bgt_thread);
-	spin_unlock(&ubi->wl_lock);
-}
-
 /**
  * schedule_ubi_work - schedule a work.
  * @ubi: UBI device description object
@@ -668,8 +639,19 @@ static void __schedule_ubi_work(struct ubi_device *ubi, struct ubi_work *wrk)
  */
 static void schedule_ubi_work(struct ubi_device *ubi, struct ubi_work *wrk)
 {
+	ubi_assert(ubi->thread_enabled);
+
 	mutex_lock(&ubi->work_mutex);
-	__schedule_ubi_work(ubi, wrk);
+	spin_lock(&ubi->wl_lock);
+	INIT_LIST_HEAD(&wrk->list);
+	kref_init(&wrk->ref);
+	init_completion(&wrk->comp);
+	list_add_tail(&wrk->list, &ubi->works);
+	ubi_assert(ubi->works_count >= 0);
+	ubi->works_count += 1;
+	if (!wl_work_suspended(ubi) && !ubi_dbg_is_bgt_disabled(ubi))
+		wake_up_process(ubi->bgt_thread);
+	spin_unlock(&ubi->wl_lock);
 	mutex_unlock(&ubi->work_mutex);
 }
 
@@ -739,6 +721,8 @@ static int do_sync_erase(struct ubi_device *ubi, struct ubi_wl_entry *e,
 
 	return __erase_worker(ubi, wl_wrk);
 }
+
+static int ensure_wear_leveling(struct ubi_device *ubi);
 
 /**
  * wear_leveling_worker - wear-leveling worker function.
@@ -1014,9 +998,13 @@ out_not_moved:
 	spin_unlock(&ubi->wl_lock);
 
 	ubi_free_vid_hdr(ubi, vid_hdr);
-	err = do_sync_erase(ubi, e2, vol_id, lnum, torture);
-	if (err)
-		goto out_ro;
+	if (dst_leb_clean) {
+		ensure_wear_leveling(ubi);
+	} else {
+		err = do_sync_erase(ubi, e2, vol_id, lnum, torture);
+		if (err)
+			goto out_ro;
+	}
 
 	mutex_unlock(&ubi->move_mutex);
 	return 0;
@@ -1054,13 +1042,12 @@ out_cancel:
 /**
  * ensure_wear_leveling - schedule wear-leveling if it is needed.
  * @ubi: UBI device description object
- * @nested: set to non-zero if this function is called from UBI worker
  *
  * This function checks if it is time to start wear-leveling and schedules it
  * if yes. This function returns zero in case of success and a negative error
  * code in case of failure.
  */
-static int ensure_wear_leveling(struct ubi_device *ubi, int nested)
+static int ensure_wear_leveling(struct ubi_device *ubi)
 {
 	int err = 0;
 	struct ubi_wl_entry *e1;
@@ -1107,10 +1094,8 @@ static int ensure_wear_leveling(struct ubi_device *ubi, int nested)
 
 	wrk->anchor = 0;
 	wrk->func = &wear_leveling_worker;
-	if (nested)
-		__schedule_ubi_work(ubi, wrk);
-	else
-		schedule_ubi_work(ubi, wrk);
+	schedule_ubi_work(ubi, wrk);
+
 	return err;
 
 out_cancel:
@@ -1158,7 +1143,7 @@ static int __erase_worker(struct ubi_device *ubi, struct ubi_work *wl_wrk)
 		serve_prot_queue(ubi);
 
 		/* And take care about wear-leveling */
-		err = ensure_wear_leveling(ubi, 1);
+		err = ensure_wear_leveling(ubi);
 		return err;
 	}
 
@@ -1419,7 +1404,7 @@ retry:
 	 * Technically scrubbing is the same as wear-leveling, so it is done
 	 * by the WL worker.
 	 */
-	return ensure_wear_leveling(ubi, 0);
+	return ensure_wear_leveling(ubi);
 }
 
 /**
@@ -1703,7 +1688,7 @@ int ubi_wl_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 	ubi->rsvd_pebs += reserved_pebs;
 
 	/* Schedule wear-leveling if needed */
-	err = ensure_wear_leveling(ubi, 0);
+	err = ensure_wear_leveling(ubi);
 	if (err)
 		goto out_free;
 
