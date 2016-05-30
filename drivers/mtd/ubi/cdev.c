@@ -495,7 +495,7 @@ static long vol_cdev_ioctl(struct file *file, unsigned int cmd,
 		if (err)
 			break;
 
-		err = ubi_wl_flush(ubi, UBI_ALL, UBI_ALL);
+		err = ubi_wl_flush(ubi);
 		break;
 	}
 
