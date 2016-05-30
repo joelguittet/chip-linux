@@ -645,7 +645,10 @@ static int io_init(struct ubi_device *ubi, int max_beb_per1024)
 	 * physical eraseblocks maximum.
 	 */
 
-	ubi->peb_size   = ubi->mtd->erasesize;
+	ubi->consolidated_peb_size = ubi->mtd->erasesize;
+	ubi->peb_size   = ubi->consolidated_peb_size /
+			  mtd_pairing_groups_per_eb(ubi->mtd);
+	ubi->lebs_per_consolidated_peb = mtd_pairing_groups_per_eb(ubi->mtd);
 	ubi->peb_count  = mtd_div_by_eb(ubi->mtd->size, ubi->mtd);
 	ubi->flash_size = ubi->mtd->size;
 
@@ -968,7 +971,7 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 		goto out_free;
 
 	err = -ENOMEM;
-	ubi->peb_buf = vmalloc(ubi->peb_size);
+	ubi->peb_buf = vmalloc(ubi->consolidated_peb_size);
 	if (!ubi->peb_buf)
 		goto out_free;
 
@@ -1022,6 +1025,7 @@ int ubi_attach_mtd_dev(struct mtd_info *mtd, int ubi_num,
 		ubi->image_seq);
 	ubi_msg(ubi, "available PEBs: %d, total reserved PEBs: %d, PEBs reserved for bad PEB handling: %d",
 		ubi->avail_pebs, ubi->rsvd_pebs, ubi->beb_rsvd_pebs);
+	ubi_msg(ubi, "LEBs per PEB: %d", ubi->lebs_per_consolidated_peb);
 
 	/*
 	 * The below lock makes sure we do not race with 'ubi_thread()' which
