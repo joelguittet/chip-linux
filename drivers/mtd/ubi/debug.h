@@ -66,18 +66,6 @@ int ubi_debugfs_init_dev(struct ubi_device *ubi);
 void ubi_debugfs_exit_dev(struct ubi_device *ubi);
 
 /**
- * ubi_dbg_is_bgt_disabled - if the background thread is disabled.
- * @ubi: UBI device description object
- *
- * Returns non-zero if the UBI background thread is disabled for testing
- * purposes.
- */
-static inline int ubi_dbg_is_bgt_disabled(const struct ubi_device *ubi)
-{
-	return ubi->dbg.disable_bgt;
-}
-
-/**
  * ubi_dbg_is_bitflip - if it is time to emulate a bit-flip.
  * @ubi: UBI device description object
  *

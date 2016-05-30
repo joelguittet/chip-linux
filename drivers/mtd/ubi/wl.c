@@ -649,7 +649,7 @@ static void schedule_ubi_work(struct ubi_device *ubi, struct ubi_work *wrk)
 	list_add_tail(&wrk->list, &ubi->works);
 	ubi_assert(ubi->works_count >= 0);
 	ubi->works_count += 1;
-	if (!wl_work_suspended(ubi) && !ubi_dbg_is_bgt_disabled(ubi))
+	if (!wl_work_suspended(ubi))
 		wake_up_process(ubi->bgt_thread);
 	spin_unlock(&ubi->wl_lock);
 	mutex_unlock(&ubi->work_mutex);
@@ -1514,7 +1514,7 @@ int ubi_thread(void *u)
 
 		spin_lock(&ubi->wl_lock);
 		if (list_empty(&ubi->works) || ubi->ro_mode ||
-		    wl_work_suspended(ubi) || ubi_dbg_is_bgt_disabled(ubi)) {
+		    wl_work_suspended(ubi)) {
 			set_current_state(TASK_INTERRUPTIBLE);
 			spin_unlock(&ubi->wl_lock);
 			schedule();
