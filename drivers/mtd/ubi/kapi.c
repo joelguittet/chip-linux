@@ -627,7 +627,7 @@ int ubi_leb_erase(struct ubi_volume_desc *desc, int lnum)
 	if (err)
 		return err;
 
-	return ubi_wl_flush(ubi);
+	return ubi_work_flush(ubi);
 }
 EXPORT_SYMBOL_GPL(ubi_leb_erase);
 

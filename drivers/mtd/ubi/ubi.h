@@ -857,19 +857,25 @@ int self_check_eba(struct ubi_device *ubi, struct ubi_attach_info *ai_fastmap,
 int ubi_wl_get_peb(struct ubi_device *ubi);
 int ubi_wl_put_peb(struct ubi_device *ubi, int vol_id, int lnum,
 		   int pnum, int torture);
-int ubi_wl_flush(struct ubi_device *ubi);
 int ubi_wl_scrub_peb(struct ubi_device *ubi, int pnum);
 int ubi_wl_init(struct ubi_device *ubi, struct ubi_attach_info *ai);
 void ubi_wl_close(struct ubi_device *ubi);
-int ubi_thread(void *u);
 struct ubi_wl_entry *ubi_wl_get_fm_peb(struct ubi_device *ubi, int anchor);
 int ubi_wl_put_fm_peb(struct ubi_device *ubi, struct ubi_wl_entry *used_e,
 		      int lnum, int torture);
-int ubi_is_erase_work(struct ubi_work *wrk);
 void ubi_refill_pools(struct ubi_device *ubi);
 int ubi_ensure_anchor_pebs(struct ubi_device *ubi);
-void ubi_wl_suspend_work(struct ubi_device *ubi);
-void ubi_wl_resume_work(struct ubi_device *ubi);
+
+/* work.c */
+int ubi_thread(void *u);
+int ubi_is_erase_work(struct ubi_work *wrk);
+void ubi_work_suspend(struct ubi_device *ubi);
+void ubi_work_resume(struct ubi_device *ubi);
+void ubi_schedule_work(struct ubi_device *ubi, struct ubi_work *wrk);
+void ubi_work_close(struct ubi_device *ubi, int error);
+struct ubi_work *ubi_alloc_work(struct ubi_device *ubi);
+int ubi_work_flush(struct ubi_device *ubi);
+bool ubi_work_join_one(struct ubi_device *ubi);
 
 /* io.c */
 int ubi_io_read(const struct ubi_device *ubi, void *buf, int pnum, int offset,

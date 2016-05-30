@@ -184,7 +184,7 @@ static int produce_free_peb(struct ubi_device *ubi)
 {
 	while (!ubi->free.rb_node) {
 		dbg_wl("do one work synchronously");
-		if (!wl_do_one_work_sync(ubi)) {
+		if (!ubi_work_join_one(ubi)) {
 			/* Nothing to do. We have to give up. */
 			return -ENOSPC;
 		}
@@ -301,7 +301,7 @@ int ubi_ensure_anchor_pebs(struct ubi_device *ubi)
 
 	wrk->anchor = 1;
 	wrk->func = &wear_leveling_worker;
-	schedule_ubi_work(ubi, wrk);
+	ubi_schedule_work(ubi, wrk);
 	return 0;
 }
 
