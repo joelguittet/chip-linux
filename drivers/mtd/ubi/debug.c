@@ -377,6 +377,11 @@ static ssize_t dfs_file_write(struct file *file, const char __user *user_buf,
 		d->emulate_io_failures = val;
 	else if (dent == d->dfs_force_leb_consolidation)
 		d->force_leb_consolidation = val;
+	else if (dent == d->dfs_trigger_leb_consolidation) {
+		val = ubi_conso_sync(ubi);
+		if (val < 0)
+			count = val;
+	}
 	else
 		count = -EINVAL;
 
@@ -489,6 +494,13 @@ int ubi_debugfs_init_dev(struct ubi_device *ubi)
 	if (IS_ERR_OR_NULL(dent))
 		goto out_remove;
 	d->dfs_force_leb_consolidation = dent;
+
+	fname = "trigger_leb_consolidation";
+	dent = debugfs_create_file(fname, S_IWUSR, d->dfs_dir, (void *)ubi_num,
+				   &dfs_fops);
+	if (IS_ERR_OR_NULL(dent))
+		goto out_remove;
+	d->dfs_trigger_leb_consolidation = dent;
 	return 0;
 
 out_remove:

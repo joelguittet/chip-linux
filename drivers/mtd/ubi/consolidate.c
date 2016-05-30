@@ -359,6 +359,20 @@ void ubi_conso_schedule(struct ubi_device *ubi)
 		BUG();
 }
 
+int ubi_conso_sync(struct ubi_device *ubi)
+{
+	int ret = -ENOMEM;
+
+	struct ubi_work *wrk = ubi_alloc_work(ubi);
+
+	if (wrk) {
+		wrk->func = &consolidation_worker;
+		ret = ubi_schedule_work_sync(ubi, wrk);
+	}
+
+	return ret;
+}
+
 void ubi_eba_consolidate(struct ubi_device *ubi)
 {
 	if (consolidation_possible(ubi) && ubi->consolidation_pnum >= 0)

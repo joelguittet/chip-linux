@@ -445,6 +445,7 @@ struct ubi_debug_info {
 	struct dentry *dfs_emulate_bitflips;
 	struct dentry *dfs_emulate_io_failures;
 	struct dentry *dfs_force_leb_consolidation;
+	struct dentry *dfs_trigger_leb_consolidation;
 	struct dentry *dfs_emulate_power_cut;
 	struct dentry *dfs_power_cut_min;
 	struct dentry *dfs_power_cut_max;
@@ -930,6 +931,7 @@ bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
 int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum, int lpos);
 int ubi_conso_init(struct ubi_device *ubi);
 void ubi_conso_close(struct ubi_device *ubi);
+int ubi_conso_sync(struct ubi_device *ubi);
 #else
 static inline bool ubi_conso_consolidation_needed(struct ubi_device *ubi)
 {
@@ -952,6 +954,7 @@ static inline int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int 
 }
 static inline int ubi_conso_init(struct ubi_device *ubi) { return 0; }
 static inline void ubi_conso_close(struct ubi_device *ubi) {}
+static inline int ubi_conso_sync(struct ubi_device *ubi) { return 0; }
 #endif
 
 /* wl.c */
@@ -980,6 +983,8 @@ bool ubi_work_join_one(struct ubi_device *ubi);
 struct ubi_work *ubi_alloc_erase_work(struct ubi_device *ubi,
 				      struct ubi_wl_entry *e,
 				      int torture);
+int ubi_schedule_work_sync(struct ubi_device *ubi, struct ubi_work *wrk);
+
 /* io.c */
 int ubi_io_read(const struct ubi_device *ubi, void *buf, int pnum, int offset,
 		int len);
