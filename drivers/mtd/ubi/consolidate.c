@@ -333,6 +333,9 @@ bool ubi_conso_consolidation_needed(struct ubi_device *ubi)
 	if (!consolidation_possible(ubi))
 		return false;
 
+	if (ubi_dbg_force_leb_consolidation(ubi))
+		return true;
+
 	return ubi->free_count - ubi->beb_rsvd_pebs <=
 	       ubi->consolidation_threshold;
 }

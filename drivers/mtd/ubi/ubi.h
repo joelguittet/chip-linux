@@ -410,6 +410,7 @@ struct ubi_wl_entry;
  * @emulate_bitflips: emulate bit-flips for testing purposes
  * @emulate_io_failures: emulate write/erase failures for testing purposes
  * @emulate_power_cut: emulate power cut for testing purposes
+ * @force_leb_consolidation: always consolidate LEBs
  * @power_cut_counter: count down for writes left until emulated power cut
  * @power_cut_min: minimum number of writes before emulating a power cut
  * @power_cut_max: maximum number of writes until emulating a power cut
@@ -420,6 +421,7 @@ struct ubi_wl_entry;
  * @dfs_chk_fastmap: debugfs knob to enable UBI fastmap extra checks
  * @dfs_emulate_bitflips: debugfs knob to emulate bit-flips
  * @dfs_emulate_io_failures: debugfs knob to emulate write/erase failures
+ * @dfs_force_leb_consolidation: debugfs knob to enable constant LEB conso.
  * @dfs_emulate_power_cut: debugfs knob to emulate power cuts
  * @dfs_power_cut_min: debugfs knob for minimum writes before power cut
  * @dfs_power_cut_max: debugfs knob for maximum writes until power cut
@@ -431,6 +433,7 @@ struct ubi_debug_info {
 	unsigned int emulate_bitflips:1;
 	unsigned int emulate_io_failures:1;
 	unsigned int emulate_power_cut:2;
+	unsigned int force_leb_consolidation:1;
 	unsigned int power_cut_counter;
 	unsigned int power_cut_min;
 	unsigned int power_cut_max;
@@ -441,6 +444,7 @@ struct ubi_debug_info {
 	struct dentry *dfs_chk_fastmap;
 	struct dentry *dfs_emulate_bitflips;
 	struct dentry *dfs_emulate_io_failures;
+	struct dentry *dfs_force_leb_consolidation;
 	struct dentry *dfs_emulate_power_cut;
 	struct dentry *dfs_power_cut_min;
 	struct dentry *dfs_power_cut_max;

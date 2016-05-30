@@ -121,6 +121,11 @@ static inline int ubi_dbg_chk_fastmap(const struct ubi_device *ubi)
 	return ubi->dbg.chk_fastmap;
 }
 
+static inline int ubi_dbg_force_leb_consolidation(struct ubi_device *ubi)
+{
+	return ubi->dbg.force_leb_consolidation;
+}
+
 static inline void ubi_enable_dbg_chk_fastmap(struct ubi_device *ubi)
 {
 	ubi->dbg.chk_fastmap = 1;
