@@ -182,14 +182,12 @@ void ubi_refill_pools(struct ubi_device *ubi)
  */
 static int produce_free_peb(struct ubi_device *ubi)
 {
-	int err;
-
-	while (!ubi->free.rb_node && ubi->works_count) {
+	while (!ubi->free.rb_node) {
 		dbg_wl("do one work synchronously");
-		err = do_work(ubi);
-
-		if (err)
-			return err;
+		if (!wl_do_one_work_sync(ubi)) {
+			/* Nothing to do. We have to give up. */
+			return -ENOSPC;
+		}
 	}
 
 	return 0;

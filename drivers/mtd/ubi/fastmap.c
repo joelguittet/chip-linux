@@ -1607,11 +1607,11 @@ int ubi_update_fastmap(struct ubi_device *ubi)
 		new_fm->e[0] = tmp_e;
 	}
 
-	down_write(&ubi->work_sem);
+	ubi_wl_suspend_work(ubi);
 	down_write(&ubi->fm_eba_sem);
 	ret = ubi_write_fastmap(ubi, new_fm);
 	up_write(&ubi->fm_eba_sem);
-	up_write(&ubi->work_sem);
+	ubi_wl_resume_work(ubi);
 
 	if (ret)
 		goto err;

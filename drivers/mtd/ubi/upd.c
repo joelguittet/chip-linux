@@ -364,6 +364,7 @@ int ubi_more_update_data(struct ubi_device *ubi, struct ubi_volume *vol,
 		err = ubi_wl_flush(ubi);
 		if (err)
 			return err;
+
 		/* The update is finished, clear the update marker */
 		err = clear_update_marker(ubi, vol, vol->upd_bytes);
 		if (err)
