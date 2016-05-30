@@ -86,6 +86,12 @@
 /* The volume ID/LEB number/erase counter is unknown */
 #define UBI_UNKNOWN -1
 
+#ifdef CONFIG_MTD_UBI_CONSOLIDATE
+/* Number of PEBs reserved for consolidation */
+#define UBI_CONSO_RESERVED_PEBS 1
+#else
+#define UBI_CONSO_RESERVED_PEBS 0
+#endif
 /*
  * The UBI debugfs directory name pattern and maximum name length (3 for "ubi"
  * + 2 for the number plus 1 for the trailing zero byte.
@@ -165,6 +171,20 @@ enum {
 };
 
 /**
+ * struct ubi_leb_desc - UBI logical eraseblock description.
+ * @vol_id: volume ID of the locked logical eraseblock
+ * @lnum: locked logical eraseblock number
+ * @lpos: n'th LEB within this PEB, starting at 0
+ *
+ * This data structure is used in describe a logical eraseblock.
+ */
+struct ubi_leb_desc {
+	int vol_id;
+	int lnum;
+	int lpos;
+};
+
+/**
  * struct ubi_wl_entry - wear-leveling entry.
  * @u.rb: link in the corresponding (free/used) RB-tree
  * @u.list: link in the protection queue
@@ -204,6 +224,11 @@ struct ubi_ltree_entry {
 	int lnum;
 	int users;
 	struct rw_semaphore mutex;
+};
+
+struct ubi_full_leb {
+	struct list_head node;
+	struct ubi_leb_desc desc;
 };
 
 /**
@@ -262,6 +287,18 @@ struct ubi_fm_pool {
 	int used;
 	int size;
 	int max_size;
+};
+
+/**
+ * struct ubi_consolidable_leb - UBI consolidable LEB.
+ * @list: links RB-tree nodes
+ * @vol_id: volume ID
+ * @lnum: locked logical eraseblock number
+ */
+struct ubi_consolidable_leb {
+	struct list_head list;
+	int vol_id;
+	int lnum;
 };
 
 /**
@@ -325,7 +362,7 @@ struct ubi_volume {
 	int exclusive;
 	int metaonly;
 
-	int reserved_pebs;
+	int reserved_lebs;
 	int vol_type;
 	int usable_leb_size;
 	int used_ebs;
@@ -557,6 +594,15 @@ struct ubi_device {
 	spinlock_t ltree_lock;
 	struct rb_root ltree;
 
+	int lebs_per_cpeb;
+	struct ubi_leb_desc **consolidated;
+	spinlock_t full_lock;
+	struct list_head full;
+	int full_count;
+	int consolidation_threshold;
+	int consolidation_pnum;
+	struct list_head consolidable;
+
 	/* Fastmap stuff */
 	int fm_disabled;
 	struct ubi_fastmap_layout *fm;
@@ -583,6 +629,7 @@ struct ubi_device {
 	struct mutex work_mutex;
 	struct ubi_work *cur_work;
 	int wl_scheduled;
+	int conso_scheduled;
 	struct ubi_wl_entry **lookuptbl;
 	struct ubi_wl_entry *move_from;
 	struct ubi_wl_entry *move_to;
@@ -646,17 +693,22 @@ struct ubi_device {
  * volume, the @vol_id and @lnum fields are initialized to %UBI_UNKNOWN.
  */
 struct ubi_ainf_peb {
+	struct list_head list;
 	int ec;
 	int pnum;
-	int vol_id;
-	int lnum;
+	int refcount;
 	unsigned int scrub:1;
-	unsigned int copy_flag:1;
+	unsigned int consolidated:1;
+};
+
+struct ubi_ainf_leb {
+	struct rb_node rb;
+	struct ubi_leb_desc desc;
 	unsigned long long sqnum;
-	union {
-		struct rb_node rb;
-		struct list_head list;
-	} u;
+	unsigned int copy_flag:1;
+	unsigned int full:1;
+	int peb_pos;
+	struct ubi_ainf_peb *peb;
 };
 
 /**
@@ -683,6 +735,7 @@ struct ubi_ainf_peb {
 struct ubi_ainf_volume {
 	int vol_id;
 	int highest_lnum;
+	unsigned long long int highest_sqnum;
 	int leb_count;
 	int vol_type;
 	int used_ebs;
@@ -729,6 +782,7 @@ struct ubi_attach_info {
 	struct list_head free;
 	struct list_head erase;
 	struct list_head alien;
+	struct list_head used;
 	int corr_peb_count;
 	int empty_peb_count;
 	int alien_peb_count;
@@ -743,7 +797,8 @@ struct ubi_attach_info {
 	int mean_ec;
 	uint64_t ec_sum;
 	int ec_count;
-	struct kmem_cache *aeb_slab_cache;
+	struct kmem_cache *apeb_slab_cache;
+	struct kmem_cache *aleb_slab_cache;
 };
 
 /**
@@ -788,8 +843,9 @@ extern struct mutex ubi_devices_mutex;
 extern struct blocking_notifier_head ubi_notifiers;
 
 /* attach.c */
-int ubi_add_to_av(struct ubi_device *ubi, struct ubi_attach_info *ai, int pnum,
-		  int ec, const struct ubi_vid_hdr *vid_hdr, int bitflips);
+int ubi_add_to_av(struct ubi_device *ubi, struct ubi_attach_info *ai,
+		  struct ubi_ainf_peb *peb, const struct ubi_vid_hdr *vid_hdr,
+		  int peb_pos, int bitflips, bool full);
 struct ubi_ainf_volume *ubi_find_av(const struct ubi_attach_info *ai,
 				    int vol_id);
 void ubi_remove_av(struct ubi_attach_info *ai, struct ubi_ainf_volume *av);
@@ -847,13 +903,56 @@ int ubi_eba_atomic_leb_change(struct ubi_device *ubi, struct ubi_volume *vol,
 			      int lnum, const void *buf, int len);
 int ubi_eba_copy_leb(struct ubi_device *ubi, int from, int to,
 		     struct ubi_vid_hdr *vid_hdr);
+int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
+		     struct ubi_vid_hdr *vid_hdr, int nvidh);
 int ubi_eba_init(struct ubi_device *ubi, struct ubi_attach_info *ai);
 unsigned long long ubi_next_sqnum(struct ubi_device *ubi);
+int ubi_eba_leb_write_lock_nested(struct ubi_device *ubi, int vol_id, int lnum,
+				  int level);
+void ubi_eba_leb_write_unlock(struct ubi_device *ubi, int vol_id, int lnum);
 int self_check_eba(struct ubi_device *ubi, struct ubi_attach_info *ai_fastmap,
 		   struct ubi_attach_info *ai_scan);
 
+/* consolidate.c */
+#ifdef CONFIG_MTD_UBI_CONSOLIDATE
+bool ubi_conso_consolidation_needed(struct ubi_device *ubi);
+void ubi_conso_schedule(struct ubi_device *ubi);
+void ubi_eba_consolidate(struct ubi_device *ubi);
+void ubi_conso_remove_full_leb(struct ubi_device *ubi, int vol_id, int lnum);
+struct ubi_leb_desc *ubi_conso_get_consolidated(struct ubi_device *ubi,
+						int pnum);
+bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
+			      int vol_id, int lnum);
+int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum, int lpos);
+int ubi_conso_init(struct ubi_device *ubi);
+void ubi_conso_close(struct ubi_device *ubi);
+#else
+static inline bool ubi_conso_consolidation_needed(struct ubi_device *ubi)
+{
+	return false;
+}
+static inline void ubi_conso_schedule(struct ubi_device *ubi) {}
+static inline void ubi_eba_consolidate(struct ubi_device *ubi) {}
+static inline void ubi_conso_remove_full_leb(struct ubi_device *ubi, int vol_id, int lnum) {}
+static inline struct ubi_leb_desc *ubi_conso_get_consolidated(struct ubi_device *ubi, int pnum)
+{
+	return NULL;
+}
+static inline bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum, int vol_id, int lnum)
+{
+	return true;
+}
+static inline int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum, int lpos)
+{
+	return 0;
+}
+static inline int ubi_conso_init(struct ubi_device *ubi) { return 0; }
+static inline void ubi_conso_close(struct ubi_device *ubi) {}
+#endif
+
 /* wl.c */
-int ubi_wl_get_peb(struct ubi_device *ubi);
+int ubi_wl_get_peb(struct ubi_device *ubi, bool producing);
+int ubi_wl_flush(struct ubi_device *ubi);
 int ubi_wl_put_peb(struct ubi_device *ubi, int pnum, int torture);
 int ubi_wl_scrub_peb(struct ubi_device *ubi, int pnum);
 int ubi_wl_init(struct ubi_device *ubi, struct ubi_attach_info *ai);
@@ -874,7 +973,9 @@ void ubi_work_close(struct ubi_device *ubi, int error);
 struct ubi_work *ubi_alloc_work(struct ubi_device *ubi);
 int ubi_work_flush(struct ubi_device *ubi);
 bool ubi_work_join_one(struct ubi_device *ubi);
-
+struct ubi_work *ubi_alloc_erase_work(struct ubi_device *ubi,
+				      struct ubi_wl_entry *e,
+				      int torture);
 /* io.c */
 int ubi_io_read(const struct ubi_device *ubi, void *buf, int pnum, int offset,
 		int len);
@@ -921,8 +1022,8 @@ void ubi_do_get_device_info(struct ubi_device *ubi, struct ubi_device_info *di);
 void ubi_do_get_volume_info(struct ubi_device *ubi, struct ubi_volume *vol,
 			    struct ubi_volume_info *vi);
 /* scan.c */
-int ubi_compare_lebs(struct ubi_device *ubi, const struct ubi_ainf_peb *aeb,
-		      int pnum, const struct ubi_vid_hdr *vid_hdr);
+int ubi_compare_lebs(struct ubi_device *ubi, const struct ubi_ainf_leb *aeb,
+		     int pnum, const struct ubi_vid_hdr *vid_hdr);
 
 /* fastmap.c */
 #ifdef CONFIG_MTD_UBI_FASTMAP
@@ -952,6 +1053,22 @@ static inline int ubiblock_remove(struct ubi_volume_info *vi)
 	return -ENOSYS;
 }
 #endif
+
+/**
+ * ubi_get_compat - get compatibility flags of a volume.
+ * @ubi: UBI device description object
+ * @vol_id: volume ID
+ *
+ * This function returns compatibility flags for an internal volume. User
+ * volumes have no compatibility flags, so %0 is returned.
+ */
+static inline int ubi_get_compat(const struct ubi_device *ubi, int vol_id)
+{
+	if (vol_id == UBI_LAYOUT_VOLUME_ID)
+		return UBI_LAYOUT_VOLUME_COMPAT;
+	return 0;
+}
+
 
 /*
  * ubi_for_each_free_peb - walk the UBI free RB tree.
@@ -1003,21 +1120,6 @@ static inline int ubiblock_remove(struct ubi_volume_info *vi)
 	     rb;                                                             \
 	     rb = rb_next(rb),                                               \
 	     pos = (rb ? container_of(rb, typeof(*pos), member) : NULL))
-
-/*
- * ubi_move_aeb_to_list - move a PEB from the volume tree to a list.
- *
- * @av: volume attaching information
- * @aeb: attaching eraseblock information
- * @list: the list to move to
- */
-static inline void ubi_move_aeb_to_list(struct ubi_ainf_volume *av,
-					 struct ubi_ainf_peb *aeb,
-					 struct list_head *list)
-{
-		rb_erase(&aeb->u.rb, &av->root);
-		list_add_tail(&aeb->u.list, list);
-}
 
 /**
  * ubi_zalloc_vid_hdr - allocate a volume identifier header object.
