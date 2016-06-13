@@ -1718,10 +1718,28 @@ int ubi_eba_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 				if (--aeb->peb->refcount <= 0)
 					list_move_tail(&aeb->peb->list, &ai->erase);
 			} else {
+				struct ubi_leb_desc *clebs = NULL;
+
 				vol->eba_tbl[aeb->desc.lnum] = aeb->peb->pnum;
+
+				if (ubi->consolidated)
+					clebs = ubi->consolidated[aeb->peb->pnum];
+
+				if (clebs) {
+					int i;
+
+					for (i = 0; i < ubi->lebs_per_cpeb; i++) {
+						if (clebs[i].lnum < 0) {
+							aeb->full = true;
+							break;
+						}
+					}
+				}
+
 				if (aeb->full)
 					ubi_coso_add_full_leb(ubi, vol->vol_id,
-							      aeb->desc.lnum, 0);
+							      aeb->desc.lnum,
+							      aeb->peb_pos);
 			}
 		}
 	}
