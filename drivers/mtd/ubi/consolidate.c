@@ -170,8 +170,11 @@ static int consolidate_lebs(struct ubi_device *ubi)
 			goto err_unlock_fm_eba;
 		}
 
+		opnums[i] = spnum;
+
 		if (ubi->consolidated[spnum]) {
-			ubi_assert(ubi_conso_invalidate_leb(ubi, spnum, vol_id, lnum) == true);
+			if (!ubi_conso_invalidate_leb(ubi, spnum, vol_id, lnum))
+				opnums[i] = -1;
 			raw = true;
 		} else {
 			ubi_assert(!lpos);
@@ -255,8 +258,6 @@ static int consolidate_lebs(struct ubi_device *ubi)
 		struct ubi_volume *vol = vols[i];
 		int lnum = clebs[i].lnum;
 
-		opnums[i] = vol->eba_tbl[lnum];
-
 		vol->eba_tbl[lnum] = pnum;
 	}
 	ubi->consolidated[pnum] = new_clebs;
@@ -267,7 +268,8 @@ static int consolidate_lebs(struct ubi_device *ubi)
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
 		//TODO set torture if needed
-		ubi_wl_put_peb(ubi, opnums[i], 0);
+		if (opnums[i] >= 0)
+			ubi_wl_put_peb(ubi, opnums[i], 0);
 	}
 
 	kfree(clebs);
@@ -435,6 +437,7 @@ bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
 				   int vol_id, int lnum)
 {
 	struct ubi_leb_desc *clebs = NULL;
+	int i, pos = -1, remaining = 0;
 
 	if (!ubi->consolidated)
 		return true;
@@ -443,34 +446,32 @@ bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
 	if (!clebs)
 		return true;
 
-	//TODO: make this generic again
-	BUG_ON(ubi->lebs_per_cpeb > 2);
-
-	if (clebs[0].lnum == lnum && clebs[0].vol_id == vol_id) {
-		clebs[0].lnum = -1;
-		clebs[0].vol_id = -1;
-
-		if (clebs[1].lnum > -1 && clebs[1].vol_id > -1) {
-			ubi_coso_add_full_leb(ubi, clebs[1].vol_id, clebs[1].lnum, clebs[1].lpos);
-
-			return false;
+	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
+		if (clebs[i].lnum == lnum && clebs[i].vol_id == vol_id) {
+			clebs[i].lnum = -1;
+			clebs[i].vol_id = -1;
+			pos = i;
+		} else if (clebs[i].lnum >= 0) {
+			remaining++;
 		}
-	} else if (clebs[1].lnum == lnum && clebs[1].vol_id == vol_id) {
-		clebs[1].lnum = -1;
-		clebs[1].vol_id = -1;
+	}
 
-		if (clebs[0].lnum > -1 && clebs[0].vol_id > -1) {
-			ubi_coso_add_full_leb(ubi, clebs[0].vol_id, clebs[0].lnum, clebs[0].lpos);
+	ubi_assert(pos >= 0);
 
-			return false;
+	if (remaining == ubi->lebs_per_cpeb - 1) {
+		for (i = 0; i < ubi->lebs_per_cpeb; i++) {
+			if (i == pos)
+				continue;
+
+			ubi_coso_add_full_leb(ubi, clebs[i].vol_id,
+					      clebs[i].lnum, clebs[i].lpos);
 		}
-	} else
-		ubi_assert(0);
+	} else if (!remaining) {
+		ubi->consolidated[pnum] = NULL;
+		kfree(clebs);
+	}
 
-	ubi->consolidated[pnum] = NULL;
-	kfree(clebs);
-
-	return true;
+	return remaining;
 }
 
 int ubi_conso_init(struct ubi_device *ubi)
