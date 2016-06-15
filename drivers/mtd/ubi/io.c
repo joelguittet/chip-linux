@@ -1177,6 +1177,14 @@ int ubi_io_read_vid_hdrs(struct ubi_device *ubi, int pnum,
 
 		magic = be32_to_cpu(vid_hdr->magic);
 		if (magic != UBI_VID_HDR_MAGIC) {
+			/*
+			 * The I/O unit containing the VID header is padded
+			 * with zeros: do not complain if we managed to read
+			 * at least one valid header.
+			 */
+			if (i && !magic)
+				break;
+
 			if (mtd_is_eccerr(read_err)) {
 				err = UBI_IO_BAD_HDR_EBADMSG;
 				break;
@@ -1192,14 +1200,6 @@ int ubi_io_read_vid_hdrs(struct ubi_device *ubi, int pnum,
 					err = UBI_IO_FF;
 				else
 					err = UBI_IO_FF_BITFLIPS;
-
-				/*
-				 * Propagate UBI_IO_FF/_BITFLIPS only for the first VID header,
-				 * otherwise UBI will treat the whole PEB as empty.
-				 */
-				if (i)
-					err = 0;
-
 				break;
 			}
 
