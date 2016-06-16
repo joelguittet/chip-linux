@@ -1059,7 +1059,8 @@ static int scan_peb(struct ubi_device *ubi, struct ubi_attach_info *ai,
 
 	if (nvidh == 1) {
 		err = ubi_io_read(ubi, ech, pnum,
-				  ubi->peb_size - ubi->hdrs_min_io_size,
+				  ubi->leb_size + ubi->leb_start -
+				  ubi->hdrs_min_io_size,
 				  ubi->hdrs_min_io_size);
 		if (!err && !ubi_check_pattern(ech, 0xff, ubi->hdrs_min_io_size))
 			full = true;

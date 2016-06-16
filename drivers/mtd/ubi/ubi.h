@@ -654,7 +654,6 @@ struct ubi_device {
 	long long flash_size;
 	int peb_count;
 	int peb_size;
-	int consolidated_peb_size;
 	int bad_peb_count;
 	int good_peb_count;
 	int corr_peb_count;

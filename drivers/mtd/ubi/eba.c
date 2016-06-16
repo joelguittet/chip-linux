@@ -1464,8 +1464,8 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 	 * @ubi->buf_mutex.
 	 */
 	mutex_lock(&ubi->buf_mutex);
-	dbg_wl("read %d bytes of data", ubi->consolidated_peb_size - ubi->leb_start);
-	err = ubi_io_raw_read(ubi, ubi->peb_buf, from, ubi->leb_start, ubi->consolidated_peb_size - ubi->leb_start);
+	dbg_wl("read %d bytes of data", ubi->peb_size - ubi->leb_start);
+	err = ubi_io_raw_read(ubi, ubi->peb_buf, from, ubi->leb_start, ubi->peb_size - ubi->leb_start);
 	if (err && err != UBI_IO_BITFLIPS) {
 		ubi_warn(ubi, "error %d while reading data from PEB %d",
 			 err, from);
@@ -1494,7 +1494,7 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 
 	cond_resched();
 
-	err = ubi_io_raw_write(ubi, ubi->peb_buf, to, ubi->leb_start, ubi->consolidated_peb_size - ubi->leb_start);
+	err = ubi_io_raw_write(ubi, ubi->peb_buf, to, ubi->leb_start, ubi->peb_size - ubi->leb_start);
 	if (err) {
 		if (err == -EIO)
 			err = MOVE_TARGET_WR_ERR;

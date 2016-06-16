@@ -120,7 +120,7 @@ static int self_check_write(struct ubi_device *ubi, const void *buf, int pnum,
 static int ubi_io_mtd_read(const struct ubi_device *ubi, void *buf, int pnum,
 			   int offset, int len, size_t *read, bool raw)
 {
-	loff_t addr = (loff_t)pnum * ubi->consolidated_peb_size;
+	loff_t addr = (loff_t)pnum * ubi->peb_size;
 	int wunitoffs, chunklen, err = 0, end = offset + len;
 	struct mtd_pairing_info info;
 
@@ -187,7 +187,7 @@ static int ubi_io_mtd_read(const struct ubi_device *ubi, void *buf, int pnum,
 static int __ubi_io_read(const struct ubi_device *ubi, void *buf, int pnum,
 			 int offset, int len, bool raw)
 {
-	int peb_size = raw ? ubi->consolidated_peb_size : ubi->peb_size;
+	int peb_size = raw ? ubi->peb_size : ubi->leb_size + ubi->leb_start;
 	int err, retries = 0;
 	size_t read;
 
@@ -291,7 +291,7 @@ int ubi_io_raw_read(const struct ubi_device *ubi, void *buf, int pnum,
 int ubi_io_mtd_write(struct ubi_device *ubi, const void *buf, int pnum, int offset,
 		     int len, size_t *written, bool raw)
 {
-	loff_t addr = (loff_t)pnum * ubi->consolidated_peb_size;
+	loff_t addr = (loff_t)pnum * ubi->peb_size;
 	int chunklen, err = 0, end = offset + len;
 	struct mtd_pairing_info info;
 
@@ -344,7 +344,7 @@ int ubi_io_mtd_write(struct ubi_device *ubi, const void *buf, int pnum, int offs
 static int __ubi_io_write(struct ubi_device *ubi, const void *buf, int pnum,
 			  int offset, int len, bool raw)
 {
-	int peb_size = raw ? ubi->consolidated_peb_size : ubi->peb_size;
+	int peb_size = raw ? ubi->peb_size : ubi->leb_size + ubi->leb_start;
 	int rawoffs = offset, rawlen = len;
 	int err;
 	size_t written;
@@ -487,8 +487,8 @@ retry:
 	memset(&ei, 0, sizeof(struct erase_info));
 
 	ei.mtd      = ubi->mtd;
-	ei.addr     = (loff_t)pnum * ubi->consolidated_peb_size;
-	ei.len      = ubi->consolidated_peb_size;
+	ei.addr     = (loff_t)pnum * ubi->peb_size;
+	ei.len      = ubi->peb_size;
 	ei.callback = erase_callback;
 	ei.priv     = (unsigned long)&wq;
 
@@ -524,7 +524,7 @@ retry:
 		return -EIO;
 	}
 
-	err = ubi_self_check_all_ff(ubi, pnum, 0, ubi->consolidated_peb_size);
+	err = ubi_self_check_all_ff(ubi, pnum, 0, ubi->peb_size);
 	if (err)
 		return err;
 
@@ -564,12 +564,12 @@ static int torture_peb(struct ubi_device *ubi, int pnum)
 
 		/* Make sure the PEB contains only 0xFF bytes */
 		err = ubi_io_raw_read(ubi, ubi->peb_buf, pnum, 0,
-				      ubi->consolidated_peb_size);
+				      ubi->peb_size);
 		if (err)
 			goto out;
 
 		err = ubi_check_pattern(ubi->peb_buf, 0xFF,
-					ubi->consolidated_peb_size);
+					ubi->peb_size);
 		if (err == 0) {
 			ubi_err(ubi, "erased PEB %d, but a non-0xFF byte found",
 				pnum);
@@ -578,20 +578,20 @@ static int torture_peb(struct ubi_device *ubi, int pnum)
 		}
 
 		/* Write a pattern and check it */
-		memset(ubi->peb_buf, patterns[i], ubi->consolidated_peb_size);
+		memset(ubi->peb_buf, patterns[i], ubi->peb_size);
 		err = ubi_io_raw_write(ubi, ubi->peb_buf, pnum, 0,
-				       ubi->consolidated_peb_size);
+				       ubi->peb_size);
 		if (err)
 			goto out;
 
 		memset(ubi->peb_buf, ~patterns[i], ubi->peb_size);
 		err = ubi_io_raw_read(ubi, ubi->peb_buf, pnum, 0,
-				      ubi->consolidated_peb_size);
+				      ubi->peb_size);
 		if (err)
 			goto out;
 
 		err = ubi_check_pattern(ubi->peb_buf, patterns[i],
-					ubi->consolidated_peb_size);
+					ubi->peb_size);
 		if (err == 0) {
 			ubi_err(ubi, "pattern %x checking failed for PEB %d",
 				patterns[i], pnum);
@@ -662,7 +662,7 @@ static int nor_erase_prepare(struct ubi_device *ubi, int pnum)
 	 * invalid VID header, in which case UBI will treat this PEB as
 	 * corrupted and will try to preserve it, and print scary warnings.
 	 */
-	addr = (loff_t)pnum * ubi->consolidated_peb_size;
+	addr = (loff_t)pnum * ubi->peb_size;
 	err = ubi_io_read_ec_hdr(ubi, pnum, &ec_hdr, 0);
 	if (err != UBI_IO_BAD_HDR_EBADMSG && err != UBI_IO_BAD_HDR &&
 	    err != UBI_IO_FF){
@@ -688,7 +688,7 @@ error:
 	 * return an error.
 	 */
 	ubi_err(ubi, "cannot invalidate PEB %d, write returned %d", pnum, err);
-	ubi_dump_flash(ubi, pnum, 0, ubi->consolidated_peb_size);
+	ubi_dump_flash(ubi, pnum, 0, ubi->peb_size);
 	return -EIO;
 }
 
@@ -761,7 +761,7 @@ int ubi_io_is_bad(const struct ubi_device *ubi, int pnum)
 
 		ret = mtd_block_isbad(mtd,
 				      (loff_t)pnum *
-				      ubi->consolidated_peb_size);
+				      ubi->peb_size);
 		if (ret < 0)
 			ubi_err(ubi, "error %d while checking if PEB %d is bad",
 				ret, pnum);
@@ -797,7 +797,7 @@ int ubi_io_mark_bad(const struct ubi_device *ubi, int pnum)
 		return 0;
 
 	err = mtd_block_markbad(mtd,
-				(loff_t)pnum * ubi->consolidated_peb_size);
+				(loff_t)pnum * ubi->peb_size);
 	if (err)
 		ubi_err(ubi, "cannot mark PEB %d bad, error %d", pnum, err);
 	return err;
@@ -1620,7 +1620,7 @@ int ubi_self_check_all_ff(struct ubi_device *ubi, int pnum, int offset, int len)
 	size_t read;
 	int err;
 	void *buf;
-	loff_t addr = (loff_t)pnum * ubi->consolidated_peb_size + offset;
+	loff_t addr = (loff_t)pnum * ubi->peb_size + offset;
 
 	//XXX
 	return 0;

@@ -181,7 +181,7 @@ static int consolidate_lebs(struct ubi_device *ubi)
 			raw = false;
 		}
 
-		ubi_assert(offset + ubi->leb_size < ubi->consolidated_peb_size);
+		ubi_assert(offset + ubi->leb_size < ubi->peb_size);
 
 		if (!raw)
 			err = ubi_io_read(ubi, buf, spnum, ubi->leb_start, ubi->leb_size);
@@ -236,7 +236,7 @@ static int consolidate_lebs(struct ubi_device *ubi)
 	 * that expect the whole block to be programmed in order to work
 	 * reliably (some Hynix chips are impacted).
 	 */
-	memset(ubi->peb_buf + offset, 0, ubi->consolidated_peb_size - offset);
+	memset(ubi->peb_buf + offset, 0, ubi->peb_size - offset);
 
 	err = ubi_io_write_vid_hdrs(ubi, pnum, vid_hdrs, ubi->lebs_per_cpeb);
 	if (err) {
@@ -247,10 +247,10 @@ static int consolidate_lebs(struct ubi_device *ubi)
 
 	err = ubi_io_raw_write(ubi, ubi->peb_buf + ubi->leb_start,
 			       pnum, ubi->leb_start,
-			       ubi->consolidated_peb_size - ubi->leb_start);
+			       ubi->peb_size - ubi->leb_start);
 	if (err) {
 		ubi_warn(ubi, "failed to write %d bytes of data to PEB %d",
-			 ubi->consolidated_peb_size - ubi->leb_start, pnum);
+			 ubi->peb_size - ubi->leb_start, pnum);
 		goto err_unlock_fm_eba;
 	}
 
