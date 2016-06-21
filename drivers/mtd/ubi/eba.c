@@ -356,7 +356,6 @@ int ubi_eba_unmap_leb(struct ubi_device *ubi, struct ubi_volume *vol,
 	vol->eba_tbl[lnum] = UBI_LEB_UNMAPPED;
 	release_peb = ubi_conso_invalidate_leb(ubi, pnum, vol_id, lnum);
 	up_read(&ubi->fm_eba_sem);
-	ubi_conso_remove_full_leb(ubi, vol_id, lnum);
 
 out_unlock:
 	ubi_eba_leb_write_unlock(ubi, vol_id, lnum);
@@ -1080,7 +1079,7 @@ retry:
 	if (old_pnum >= 0)
 		release_peb = ubi_conso_invalidate_leb(ubi, old_pnum, vol_id, lnum);
 	up_read(&ubi->fm_eba_sem);
-	ubi_conso_remove_full_leb(ubi, vol_id, lnum);
+
 	if (full) {
 		int ret;
 

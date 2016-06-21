@@ -926,7 +926,6 @@ int self_check_eba(struct ubi_device *ubi, struct ubi_attach_info *ai_fastmap,
 bool ubi_conso_consolidation_needed(struct ubi_device *ubi);
 void ubi_conso_schedule(struct ubi_device *ubi);
 void ubi_eba_consolidate(struct ubi_device *ubi);
-void ubi_conso_remove_full_leb(struct ubi_device *ubi, int vol_id, int lnum);
 struct ubi_leb_desc *ubi_conso_get_consolidated(struct ubi_device *ubi,
 						int pnum);
 bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
@@ -943,7 +942,6 @@ static inline bool ubi_conso_consolidation_needed(struct ubi_device *ubi)
 }
 static inline void ubi_conso_schedule(struct ubi_device *ubi) {}
 static inline void ubi_eba_consolidate(struct ubi_device *ubi) {}
-static inline void ubi_conso_remove_full_leb(struct ubi_device *ubi, int vol_id, int lnum) {}
 static inline struct ubi_leb_desc *ubi_conso_get_consolidated(struct ubi_device *ubi, int pnum)
 {
 	return NULL;

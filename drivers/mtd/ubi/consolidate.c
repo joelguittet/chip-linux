@@ -382,7 +382,8 @@ void ubi_eba_consolidate(struct ubi_device *ubi)
 		ubi_conso_schedule(ubi);
 }
 
-void ubi_conso_remove_full_leb(struct ubi_device *ubi, int vol_id, int lnum)
+static void ubi_conso_remove_full_leb(struct ubi_device *ubi, int vol_id,
+				      int lnum)
 {
 	struct ubi_full_leb *fleb;
 
@@ -444,8 +445,10 @@ bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
 		return true;
 
 	clebs = ubi->consolidated[pnum];
-	if (!clebs)
+	if (!clebs) {
+		ubi_conso_remove_full_leb(ubi, vol_id, lnum);
 		return true;
+	}
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
 		if (clebs[i].lnum == lnum && clebs[i].vol_id == vol_id) {
