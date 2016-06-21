@@ -283,7 +283,8 @@ err_unlock_fm_eba:
 	up_read(&ubi->fm_eba_sem);
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++)
-		ubi_coso_add_full_leb(ubi, clebs[i].vol_id, clebs[i].lnum, clebs[i].lpos);
+		ubi_conso_add_full_leb(ubi, clebs[i].vol_id, clebs[i].lnum,
+				       clebs[i].lpos);
 
 	ubi_wl_put_peb(ubi, pnum, 0);
 err_unlock_lebs:
@@ -406,7 +407,7 @@ ubi_conso_get_consolidated(struct ubi_device *ubi, int pnum)
 	return NULL;
 }
 
-int ubi_coso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum, int lpos)
+int ubi_conso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum, int lpos)
 {
 	struct ubi_full_leb *fleb;
 
@@ -463,8 +464,8 @@ bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
 			if (i == pos)
 				continue;
 
-			ubi_coso_add_full_leb(ubi, clebs[i].vol_id,
-					      clebs[i].lnum, clebs[i].lpos);
+			ubi_conso_add_full_leb(ubi, clebs[i].vol_id,
+					       clebs[i].lnum, clebs[i].lpos);
 		}
 	} else {
 		ubi_conso_remove_full_leb(ubi, vol_id, lnum);

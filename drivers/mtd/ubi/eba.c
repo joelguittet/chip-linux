@@ -750,7 +750,7 @@ int ubi_eba_write_leb(struct ubi_device *ubi, struct ubi_volume *vol, int lnum,
 		if (full) {
 			int ret;
 
-			ret = ubi_coso_add_full_leb(ubi, vol_id, lnum, 0);
+			ret = ubi_conso_add_full_leb(ubi, vol_id, lnum, 0);
 			if (ret)
 				ubi_warn(ubi,
 					 "failed to add LEB %d:%d to the full LEB list",
@@ -816,7 +816,7 @@ retry:
 	up_read(&ubi->fm_eba_sem);
 
 	if (full) {
-		err = ubi_coso_add_full_leb(ubi, vol_id, lnum, 0);
+		err = ubi_conso_add_full_leb(ubi, vol_id, lnum, 0);
 		if (err)
 			ubi_warn(ubi,
 				 "failed to add LEB %d:%d to the full LEB list",
@@ -950,7 +950,7 @@ retry:
 	vol->used_ebs = used_ebs; //XXX
 	up_read(&ubi->fm_eba_sem);
 
-	err = ubi_coso_add_full_leb(ubi, vol_id, lnum, 0);
+	err = ubi_conso_add_full_leb(ubi, vol_id, lnum, 0);
 	if (err)
 		ubi_warn(ubi, "failed to add LEB %d:%d to the full LEB list",
 			 vol_id, lnum);
@@ -1084,7 +1084,7 @@ retry:
 	if (full) {
 		int ret;
 
-		ret = ubi_coso_add_full_leb(ubi, vol_id, lnum, 0);
+		ret = ubi_conso_add_full_leb(ubi, vol_id, lnum, 0);
 		if (ret)
 			ubi_warn(ubi,
 				"failed to add LEB %d:%d to the full LEB list",
@@ -1737,9 +1737,10 @@ int ubi_eba_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 				}
 
 				if (aeb->full)
-					ubi_coso_add_full_leb(ubi, vol->vol_id,
-							      aeb->desc.lnum,
-							      aeb->peb_pos);
+					ubi_conso_add_full_leb(ubi,
+							       vol->vol_id,
+							       aeb->desc.lnum,
+							       aeb->peb_pos);
 			}
 		}
 	}
