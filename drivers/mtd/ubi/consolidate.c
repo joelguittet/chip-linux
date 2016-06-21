@@ -466,9 +466,13 @@ bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
 			ubi_coso_add_full_leb(ubi, clebs[i].vol_id,
 					      clebs[i].lnum, clebs[i].lpos);
 		}
-	} else if (!remaining) {
-		ubi->consolidated[pnum] = NULL;
-		kfree(clebs);
+	} else {
+		ubi_conso_remove_full_leb(ubi, vol_id, lnum);
+
+		if (!remaining) {
+			ubi->consolidated[pnum] = NULL;
+			kfree(clebs);
+		}
 	}
 
 	return !remaining;
