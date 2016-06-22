@@ -137,7 +137,7 @@ static int ubi_io_mtd_read(const struct ubi_device *ubi, void *buf, int pnum,
 	*read = 0;
 
 	while (offset < end) {
-		int realoffs;
+		int realoffs, ret;
 		size_t chunkread = 0;
 
 		chunklen = min_t(int, ubi->mtd->writesize - wunitoffs,
@@ -145,11 +145,17 @@ static int ubi_io_mtd_read(const struct ubi_device *ubi, void *buf, int pnum,
 		realoffs = mtd_pairing_info_to_wunit(ubi->mtd, &info);
 		realoffs *= ubi->mtd->writesize;
 		realoffs += wunitoffs;
-		err = mtd_read(ubi->mtd, addr + realoffs, chunklen,
+		ret = mtd_read(ubi->mtd, addr + realoffs, chunklen,
 			       &chunkread, buf);
 		*read += chunkread;
-		if (err && !mtd_is_bitflip(err))
-			return err;
+		if (mtd_is_bitflip(ret)) {
+			if (!err)
+				err = -EUCLEAN;
+		} else if (mtd_is_eccerr(ret)) {
+			err = -EBADMSG;
+		} else if (ret) {
+			return ret;
+		}
 
 		offset += chunklen;
 		buf += chunklen;
