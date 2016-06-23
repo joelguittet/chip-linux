@@ -16,24 +16,6 @@
 #include <linux/mtd/nand.h>
 #include <linux/slab.h>
 
-static void toshiba_set_slc_mode(struct mtd_info *mtd, bool enable)
-{
-}
-
-static void toshiba_slc_mode_fix_page(struct mtd_info *mtd, int *page)
-{
-	int relpage = *page & 0x7f;
-	int newpage;
-
-	if (!relpage)
-		return;
-
-	relpage = (relpage * 2) - 1;
-	newpage = (*page & ~0xff) | relpage;
-
-	*page = newpage;
-}
-
 static u8 tc58teg_read_retry_regs[] = {
 	0x4, 0x5, 0x6, 0x7, 0xd
 };
@@ -76,8 +58,6 @@ static int tc58teg_init(struct mtd_info *mtd, const uint8_t *id)
 {
 	struct nand_chip *chip = mtd->priv;
 
-	chip->set_slc_mode = toshiba_set_slc_mode;
-	chip->fix_page = toshiba_slc_mode_fix_page;
 	chip->setup_read_retry = tc58teg_setup_read_retry;
 	chip->read_retries = 10;
 	chip->options |= NAND_NEED_SCRAMBLING;
