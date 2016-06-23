@@ -164,7 +164,6 @@ int ubi_io_read(const struct ubi_device *ubi, void *buf, int pnum, int offset,
 
 	addr = (loff_t)pnum * ubi->peb_size + offset;
 retry:
-	ubi_wl_update_rc((struct ubi_device *)ubi, pnum);
 	err = mtd_read_slc_mode(ubi->mtd, addr, len, &read, buf);
 	if (err) {
 		const char *errstr = mtd_is_eccerr(err) ? " (ECC error)" : "";
