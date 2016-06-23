@@ -62,6 +62,7 @@ static int tc58teg_init(struct mtd_info *mtd, const uint8_t *id)
 	chip->read_retries = 10;
 	chip->options |= NAND_NEED_SCRAMBLING;
 	chip->onfi_timing_mode_default = 3;
+	mtd->pairing = &dist3_pairing_scheme;
 
 	return 0;
 }
