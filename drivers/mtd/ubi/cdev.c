@@ -963,36 +963,6 @@ static long ubi_cdev_ioctl(struct file *file, unsigned int cmd,
 		break;
 	}
 
-	/* Read a PEB */
-	case UBI_IOCRPEB:
-	{
-		int pnum;
-
-		err = get_user(pnum, (__user int32_t *)argp);
-		if (err) {
-			err = -EFAULT;
-			break;
-		}
-
-		err = ubi_bitrot_check(ubi, pnum, 0);
-		break;
-	}
-
-	/* Scrub a PEB */
-	case UBI_IOCSPEB:
-	{
-		int pnum;
-
-		err = get_user(pnum, (__user int32_t *)argp);
-		if (err) {
-			err = -EFAULT;
-			break;
-		}
-
-		err = ubi_bitrot_check(ubi, pnum, 1);
-		break;
-	}
-
 	default:
 		err = -ENOTTY;
 		break;
