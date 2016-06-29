@@ -157,6 +157,11 @@
 	};
 };
 
+&lradc {
+	vref-supply = <&reg_vcc3v0>;
+	status = "okay";
+};
+
 &mmc0_pins_a {
 	allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
 };
