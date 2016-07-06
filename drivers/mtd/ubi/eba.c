@@ -1367,10 +1367,9 @@ out_unlock_leb:
 int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 		     struct ubi_vid_hdr *vid_hdr, int nvidh)
 {
-	int err, i;
+	int err, i, nlebs = nvidh;
 	int *vol_id = NULL, *lnum = NULL;
 	struct ubi_volume **vol = NULL;
-	uint32_t crc;
 
 	vol_id = kmalloc(nvidh * sizeof(*vol_id), GFP_NOFS);
 	lnum = kmalloc(nvidh * sizeof(*lnum), GFP_NOFS);
@@ -1449,11 +1448,16 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 		 * cancel it.
 		 */
 		if (vol[i]->eba_tbl[lnum[i]] != from) {
-			ubi_msg(ubi, "LEB %d:%d is no longer mapped to PEB %d, mapped to PEB %d, cancel",
-			       vol_id[i], lnum[i], from, vol[i]->eba_tbl[lnum[i]]);
-			err = MOVE_CANCEL_RACE;
-			goto out_unlock_leb;
+			lnum[i] = -1;
+			vol_id[i] = -1;
+			nlebs--;
 		}
+	}
+
+	if (!nlebs) {
+		ubi_msg(ubi, "no more LEBs mapped to PEB %d, cancel", from);
+		err = MOVE_CANCEL_RACE;
+		goto out_unlock_leb;
 	}
 
 	/*
@@ -1474,13 +1478,22 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 
 	cond_resched();
 	for (i = 0; i < nvidh; i++) {
-		//TODO: we could skip crc calucation as consolidated LEB _always_ hav copy_flag=1 and hence also a valid crc...
-		crc = crc32(UBI_CRC32_INIT, ubi->peb_buf + ubi->leb_start + (i * ubi->leb_size), be32_to_cpu(vid_hdr[i].data_size));
-		vid_hdr[i].copy_flag = 1;
-		vid_hdr[i].data_crc = cpu_to_be32(crc);
-		vid_hdr[i].sqnum = cpu_to_be64(ubi_next_sqnum(ubi));
+		uint32_t crc;
 
-		cond_resched();
+		if (lnum[i] < 0)
+			continue;
+
+		if (!be32_to_cpu(vid_hdr[i].data_size)) {
+			int data_size;
+
+			data_size = ubi->leb_size - be32_to_cpu(vid_hdr->data_pad);
+			crc = crc32(UBI_CRC32_INIT, ubi->peb_buf + ubi->leb_start + (i * ubi->leb_size), data_size);
+			vid_hdr[i].data_crc = cpu_to_be32(crc);
+			vid_hdr[i].data_size = cpu_to_be32(data_size);
+			cond_resched();
+		}
+		vid_hdr[i].copy_flag = 1;
+		vid_hdr[i].sqnum = cpu_to_be64(ubi_next_sqnum(ubi));
 	}
 
 
