@@ -30,18 +30,14 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 		spin_lock(&ubi->full_lock);
 		fleb = list_first_entry_or_null(&ubi->full,
 						struct ubi_full_leb, node);
+		if (fleb)
+			clebs[i] = fleb->desc;
 		spin_unlock(&ubi->full_lock);
 
 		if (!fleb) {
 			err = -EAGAIN;
 			goto err;
-		} else {
-			list_del_init(&fleb->node);
-			list_add_tail(&fleb->node, &found);
-			ubi->full_count--;
 		}
-
-		clebs[i] = fleb->desc;
 
 		err = ubi_eba_leb_write_lock_nested(ubi, clebs[i].vol_id,
 						    clebs[i].lnum, i);
@@ -52,6 +48,31 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 			ubi->full_count++;
 			spin_unlock(&ubi->full_lock);
 			goto err;
+		}
+
+		spin_lock(&ubi->full_lock);
+		fleb = list_first_entry_or_null(&ubi->full,
+						struct ubi_full_leb, node);
+		if (fleb && !memcmp(&fleb->desc, &clebs[i], sizeof(*clebs))) {
+			list_del_init(&fleb->node);
+			list_add_tail(&fleb->node, &found);
+			ubi->full_count--;
+		} else {
+			/*
+			 * The LEB has been unmapped while we were trying to
+			 * acquire its lock: drop it.
+			 */
+			fleb = NULL;
+		}
+		spin_unlock(&ubi->full_lock);
+
+		/*
+		 * The full LEB we were tracking is no longer mapped, search
+		 * for another one.
+		 */
+		if (!fleb) {
+			ubi_eba_leb_write_unlock(ubi, clebs[i].vol_id, clebs[i].lnum);
+			continue;
 		}
 
 		spin_lock(&ubi->volumes_lock);
@@ -78,9 +99,7 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 		kfree(fleb);
 	}
 
-	if (i < ubi->lebs_per_cpeb - 1) {
-		return -EAGAIN;
-	}
+	ubi_assert(i == ubi->lebs_per_cpeb);
 
 	return 0;
 
