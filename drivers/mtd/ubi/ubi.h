@@ -490,6 +490,7 @@ struct ubi_debug_info {
  * @global_sqnum: global sequence number
  * @ltree_lock: protects the lock tree and @global_sqnum
  * @ltree: the lock tree
+ * @alc_mutex: serializes "atomic LEB change" operations
  *
  * @fm_disabled: non-zero if fastmap is disabled (default)
  * @fm: in-memory data structure of the currently used fastmap
@@ -600,6 +601,7 @@ struct ubi_device {
 	unsigned long long global_sqnum;
 	spinlock_t ltree_lock;
 	struct rb_root ltree;
+	struct mutex alc_mutex;
 
 	int lebs_per_cpeb;
 	struct mutex conso_lock;
