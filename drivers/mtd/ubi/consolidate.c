@@ -41,14 +41,8 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 
 		err = ubi_eba_leb_write_lock_nested(ubi, clebs[i].vol_id,
 						    clebs[i].lnum, i);
-		if (err) {
-			spin_lock(&ubi->full_lock);
-			list_del(&fleb->node);
-			list_add_tail(&fleb->node, &ubi->full);
-			ubi->full_count++;
-			spin_unlock(&ubi->full_lock);
+		if (err)
 			goto err;
-		}
 
 		spin_lock(&ubi->full_lock);
 		fleb = list_first_entry_or_null(&ubi->full,
@@ -81,7 +75,6 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 		/* volume vanished under us */
 		//TODO clarify/document when/why this can happen
 		if (!vols[i]) {
-			ubi_assert(0);
 			ubi_eba_leb_write_unlock(ubi, clebs[i].vol_id, clebs[i].lnum);
 			spin_lock(&ubi->full_lock);
 			list_del_init(&fleb->node);
