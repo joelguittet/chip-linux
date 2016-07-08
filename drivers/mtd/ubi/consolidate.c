@@ -491,6 +491,10 @@ bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum, int vol_id,
 		return true;
 	}
 
+	/*
+	 * We need to take the lock to avoid doing the same operation twice.
+	 */
+	mutex_lock(&ubi->conso_lock);
 	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
 		if (clebs[i].lnum == lnum && clebs[i].vol_id == vol_id) {
 			clebs[i].lnum = -1;
@@ -519,6 +523,7 @@ bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum, int vol_id,
 			kfree(clebs);
 		}
 	}
+	mutex_unlock(&ubi->conso_lock);
 
 	return !remaining;
 }
@@ -529,6 +534,7 @@ int ubi_conso_init(struct ubi_device *ubi)
 	INIT_LIST_HEAD(&ubi->full);
 	ubi->full_count = 0;
 	ubi->consolidation_threshold = (ubi->avail_pebs + ubi->rsvd_pebs) / 3;
+	mutex_init(&ubi->conso_lock);
 
 	if (ubi->consolidation_threshold < ubi->lebs_per_cpeb)
 		ubi->consolidation_threshold = ubi->lebs_per_cpeb;

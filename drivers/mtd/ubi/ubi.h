@@ -602,6 +602,7 @@ struct ubi_device {
 	struct rb_root ltree;
 
 	int lebs_per_cpeb;
+	struct mutex conso_lock;
 	struct ubi_leb_desc **consolidated;
 	spinlock_t full_lock;
 	struct list_head full;
