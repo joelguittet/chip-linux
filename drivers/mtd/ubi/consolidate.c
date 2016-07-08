@@ -177,7 +177,6 @@ static int consolidate_lebs(struct ubi_device *ubi)
 		int spnum;
 		int data_size;
 		u32 crc;
-		bool raw;
 
 		spnum = vol->eba_tbl[lnum];
 
@@ -191,22 +190,17 @@ static int consolidate_lebs(struct ubi_device *ubi)
 
 		opnums[i] = spnum;
 
-		if (ubi->consolidated[spnum]) {
-			if (!ubi_conso_invalidate_leb(ubi, spnum, vol_id, lnum))
-				opnums[i] = -1;
-			raw = true;
-		} else {
-			ubi_assert(!lpos);
-			raw = false;
-		}
-
 		ubi_assert(offset + ubi->leb_size < ubi->peb_size);
 		ubi_assert(lpos >= 0 && lpos < ubi->lebs_per_cpeb);
 
-		if (!raw)
-			err = ubi_io_read(ubi, buf, spnum, ubi->leb_start, ubi->leb_size);
+		if (!ubi->consolidated[spnum])
+			err = ubi_io_read(ubi, buf, spnum, ubi->leb_start,
+					  ubi->leb_size);
 		else
-			err = ubi_io_raw_read(ubi, buf, spnum, ubi->leb_start + (lpos * ubi->leb_size), ubi->leb_size);
+			err = ubi_io_raw_read(ubi, buf, spnum,
+					      ubi->leb_start +
+					      (lpos * ubi->leb_size),
+					      ubi->leb_size);
 
 		if (err && err != UBI_IO_BITFLIPS)
 			goto err_unlock_fm_eba;
@@ -279,6 +273,14 @@ static int consolidate_lebs(struct ubi_device *ubi)
 		int lnum = clebs[i].lnum;
 
 		vol->eba_tbl[lnum] = pnum;
+
+		/*
+		 * The LEB is still referenced, set opnums[i] to -1 to prevent
+		 * its erasure.
+		 */
+		if (!ubi_conso_invalidate_leb(ubi, opnums[i], clebs[i].vol_id,
+					      lnum))
+			opnums[i] = -1;
 	}
 	ubi->consolidated[pnum] = new_clebs;
 
@@ -288,6 +290,10 @@ static int consolidate_lebs(struct ubi_device *ubi)
 
 	for (i = 0; i < ubi->lebs_per_cpeb; i++) {
 		//TODO set torture if needed
+		/*
+		 * Only release the PEB if it's not referenced by
+		 * anyone else.
+		 */
 		if (opnums[i] >= 0)
 			ubi_wl_put_peb(ubi, opnums[i], 0);
 	}
