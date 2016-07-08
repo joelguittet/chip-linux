@@ -201,6 +201,7 @@ static int consolidate_lebs(struct ubi_device *ubi)
 		}
 
 		ubi_assert(offset + ubi->leb_size < ubi->peb_size);
+		ubi_assert(lpos >= 0 && lpos < ubi->lebs_per_cpeb);
 
 		if (!raw)
 			err = ubi_io_read(ubi, buf, spnum, ubi->leb_start, ubi->leb_size);
