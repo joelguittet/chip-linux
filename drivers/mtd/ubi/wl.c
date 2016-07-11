@@ -1452,7 +1452,7 @@ int ubi_bitflip_check(struct ubi_device *ubi, int pnum, int force_scrub)
 
 	if (!force_scrub) {
 		mutex_lock(&ubi->buf_mutex);
-		err = ubi_io_read(ubi, ubi->peb_buf, pnum, 0, ubi->peb_size);
+		err = ubi_io_raw_read(ubi, ubi->peb_buf, pnum, 0, ubi->peb_size);
 		mutex_unlock(&ubi->buf_mutex);
 	}
 
