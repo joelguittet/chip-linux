@@ -117,7 +117,7 @@ static int leb_pos(struct ubi_volume *vol, int lnum)
 	struct ubi_leb_desc *clebs;
 	int lpos;
 
-	ubi_assert(pnum > 0);
+	ubi_assert(pnum >= 0);
 	ubi_assert(ubi->consolidated);
 
 	clebs = ubi->consolidated[pnum];
