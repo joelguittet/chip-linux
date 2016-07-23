@@ -950,7 +950,7 @@ static inline bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum, in
 {
 	return true;
 }
-static inline int ubi_conso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum, int lpos)
+static inline int ubi_conso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum)
 {
 	return 0;
 }
