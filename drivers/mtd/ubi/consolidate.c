@@ -243,11 +243,10 @@ static int consolidate_lebs(struct ubi_device *ubi)
 				goto err_unlock_fm_eba;
 			}
 
-			ubi_free_vid_hdr(ubi, vh);
-
 			data_size = be32_to_cpu(vh[lpos].data_size);
 			vid_hdrs[i].vol_type = UBI_VID_STATIC;
 			vid_hdrs[i].used_ebs = cpu_to_be32(vol->used_ebs);
+			ubi_free_vid_hdr(ubi, vh);
 		}
 
 		vid_hdrs[i].data_pad = cpu_to_be32(vol->data_pad);
