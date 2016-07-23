@@ -610,7 +610,6 @@ struct ubi_device {
 	struct list_head full;
 	int full_count;
 	int consolidation_threshold;
-	int consolidation_pnum;
 	struct list_head consolidable;
 
 	/* Fastmap stuff */

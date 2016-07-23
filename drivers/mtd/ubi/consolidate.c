@@ -419,7 +419,7 @@ int ubi_conso_sync(struct ubi_device *ubi)
 
 void ubi_eba_consolidate(struct ubi_device *ubi)
 {
-	if (consolidation_possible(ubi) && ubi->consolidation_pnum >= 0)
+	if (consolidation_possible(ubi))
 		ubi_conso_schedule(ubi);
 }
 
