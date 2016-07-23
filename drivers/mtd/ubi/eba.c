@@ -238,31 +238,6 @@ static int leb_write_lock(struct ubi_device *ubi, int vol_id, int lnum)
 }
 
 /**
- * ubi_eba_leb_write_lock_nested - lock logical eraseblock for writing, allow nesting.
- * @ubi: UBI device description object
- * @vol_id: volume ID
- * @lnum: logical eraseblock number
- * @level: nesting level
- *
- * This function locks a logical eraseblock for consolidation.
- * Returns zero in case of success and a negative error code in case
- * of failure.
- */
-int ubi_eba_leb_write_lock_nested(struct ubi_device *ubi, int vol_id, int lnum,
-				  int level)
-{
-	struct ubi_ltree_entry *le;
-
-	le = ltree_add_entry(ubi, vol_id, lnum);
-	if (IS_ERR(le))
-		return PTR_ERR(le);
-
-	down_write_nested(&le->mutex, level);
-
-	return 0;
-}
-
-/**
  * leb_write_lock - lock logical eraseblock for writing.
  * @ubi: UBI device description object
  * @vol_id: volume ID
@@ -273,7 +248,7 @@ int ubi_eba_leb_write_lock_nested(struct ubi_device *ubi, int vol_id, int lnum,
  * success, %1 in case of contention, and and a negative error code in case of
  * failure.
  */
-static int leb_write_trylock(struct ubi_device *ubi, int vol_id, int lnum)
+int ubi_eba_leb_write_trylock(struct ubi_device *ubi, int vol_id, int lnum)
 {
 	struct ubi_ltree_entry *le;
 
@@ -1263,7 +1238,7 @@ int ubi_eba_copy_leb(struct ubi_device *ubi, int from, int to,
 	 * we do not know the reasons of the contention - it may be just a
 	 * normal I/O on this LEB, so we want to re-try.
 	 */
-	err = leb_write_trylock(ubi, vol_id, lnum);
+	err = ubi_eba_leb_write_trylock(ubi, vol_id, lnum);
 	if (err) {
 		dbg_wl("contention on LEB %d:%d, cancel", vol_id, lnum);
 		return MOVE_RETRY;
@@ -1473,7 +1448,7 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 	 */
 
 	for (i = 0; i < nvidh; i++) {
-		err = leb_write_trylock(ubi, vol_id[i], lnum[i]);
+		err = ubi_eba_leb_write_trylock(ubi, vol_id[i], lnum[i]);
 		if (err) {
 			int j;
 

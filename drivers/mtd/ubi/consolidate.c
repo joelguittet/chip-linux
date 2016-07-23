@@ -17,7 +17,7 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 {
 	struct ubi_full_leb *fleb;
 	LIST_HEAD(found);
-	int i, err = 0;
+	int i, err = 0, max_retries = ubi->full_count;
 
 	spin_lock(&ubi->full_lock);
 	if (ubi->full_count < ubi->lebs_per_cpeb)
@@ -27,6 +27,7 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 		return err;
 
 	for (i = 0; i < ubi->lebs_per_cpeb;) {
+retry:
 		spin_lock(&ubi->full_lock);
 		fleb = list_first_entry_or_null(&ubi->full,
 						struct ubi_full_leb, node);
@@ -39,10 +40,27 @@ static int find_consolidable_lebs(struct ubi_device *ubi,
 			goto err;
 		}
 
-		err = ubi_eba_leb_write_lock_nested(ubi, clebs[i].vol_id,
-						    clebs[i].lnum, i);
-		if (err)
+		err = ubi_eba_leb_write_trylock(ubi, clebs[i].vol_id, clebs[i].lnum);
+		if (err) {
+			if (err == 1) {
+				/* First list entry is already locked, move it to the end and retry. */
+				spin_lock(&ubi->full_lock);
+				fleb = list_first_entry_or_null(&ubi->full,
+								struct ubi_full_leb, node);
+				if (fleb && !memcmp(&fleb->desc, &clebs[i], sizeof(*clebs))) {
+					list_del(&fleb->node);
+					list_add_tail(&fleb->node, &ubi->full);
+				}
+
+				spin_unlock(&ubi->full_lock);
+
+				if (--max_retries > 0)
+					goto retry;
+
+				err = -EAGAIN;
+			}
 			goto err;
+		}
 
 		spin_lock(&ubi->full_lock);
 		fleb = list_first_entry_or_null(&ubi->full,
