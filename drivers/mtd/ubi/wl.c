@@ -687,19 +687,14 @@ static int __erase_worker(struct ubi_device *ubi, struct ubi_work *wl_wrk);
 static int do_sync_erase(struct ubi_device *ubi, struct ubi_wl_entry *e,
 			 int torture)
 {
-	struct ubi_work *wl_wrk;
+	struct ubi_work wl_wrk;
 
 	dbg_wl("sync erase of PEB %i", e->pnum);
 
-	wl_wrk = ubi_alloc_work(ubi);
-	if (!wl_wrk)
-		return -ENOMEM;
+	wl_wrk.e = e;
+	wl_wrk.torture = torture;
 
-	INIT_LIST_HEAD(&wl_wrk->list);
-	wl_wrk->e = e;
-	wl_wrk->torture = torture;
-
-	return __erase_worker(ubi, wl_wrk);
+	return __erase_worker(ubi, &wl_wrk);
 }
 
 static int ensure_wear_leveling(struct ubi_device *ubi);
