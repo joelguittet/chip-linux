@@ -659,7 +659,6 @@ static int init_volumes(struct ubi_device *ubi,
 	ubi->vol_count += 1;
 	vol->ubi = ubi;
 
-	reserved_lebs = DIV_ROUND_UP(reserved_lebs, ubi->lebs_per_cpeb);
 	if (reserved_lebs > ubi->avail_pebs) {
 		ubi_err(ubi, "not enough PEBs, required %d, available %d",
 			reserved_lebs, ubi->avail_pebs);
