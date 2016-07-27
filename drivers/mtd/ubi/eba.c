@@ -46,9 +46,6 @@
 #include <linux/err.h>
 #include "ubi.h"
 
-/* Number of physical eraseblocks reserved for atomic LEB change operation */
-#define EBA_RESERVED_PEBS 1
-
 /**
  * next_sqnum - get next sequence number.
  * @ubi: UBI device description object
@@ -1701,7 +1698,7 @@ int ubi_eba_init(struct ubi_device *ubi, struct ubi_attach_info *ai)
 	struct ubi_volume *vol;
 	struct ubi_ainf_leb *aeb;
 	struct rb_node *rb;
-	int eba_rsvd = EBA_RESERVED_PEBS;
+	int eba_rsvd = UBI_EBA_RESERVED_PEBS;
 
 	dbg_eba("initialize EBA sub-system");
 

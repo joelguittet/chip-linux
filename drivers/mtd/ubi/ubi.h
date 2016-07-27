@@ -86,6 +86,12 @@
 /* The volume ID/LEB number/erase counter is unknown */
 #define UBI_UNKNOWN -1
 
+/* Number of physical eraseblocks reserved for wear-leveling purposes */
+#define UBI_WL_RESERVED_PEBS 1
+
+/* Number of physical eraseblocks reserved for atomic LEB change operation */
+#define UBI_EBA_RESERVED_PEBS (ubi->lebs_per_cpeb + 1)
+
 #ifdef CONFIG_MTD_UBI_CONSOLIDATE
 /* Number of PEBs reserved for consolidation */
 #define UBI_CONSO_RESERVED_PEBS 1
