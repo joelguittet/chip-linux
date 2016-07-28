@@ -1855,13 +1855,9 @@ static int self_check_in_pq(const struct ubi_device *ubi,
 	return -EINVAL;
 }
 
-static bool enough_free_pebs(struct ubi_device *ubi)
+static bool enough_free_pebs(struct ubi_device *ubi, int min_limit)
 {
-	/*
-	 * Hold back one PEB for the producing case,
-	 * currently only for consolidation.
-	 */
-	return ubi->free_count > UBI_CONSO_RESERVED_PEBS;
+	return ubi->free_count > min_limit;
 }
 
 #ifndef CONFIG_MTD_UBI_FASTMAP
@@ -1869,7 +1865,11 @@ static struct ubi_wl_entry *get_peb_for_wl(struct ubi_device *ubi)
 {
 	struct ubi_wl_entry *e;
 
-	if (!enough_free_pebs(ubi))
+	/*
+	 * Hold back one PEB for the producing case,
+	 * currently only for consolidation.
+	 */
+	if (!enough_free_pebs(ubi, UBI_CONSO_RESERVED_PEBS))
 		return NULL;
 
 	e = find_wl_entry(ubi, &ubi->free, WL_FREE_MAX_DIFF);
@@ -1890,11 +1890,11 @@ static struct ubi_wl_entry *get_peb_for_wl(struct ubi_device *ubi)
  * disabled. Returns zero in case of success and a negative error code in case
  * of failure.
  */
-static int produce_free_peb(struct ubi_device *ubi)
+static int produce_free_peb(struct ubi_device *ubi, int min_limit)
 {
 	ubi_assert(spin_is_locked(&ubi->wl_lock));
 
-	while (!enough_free_pebs(ubi)) {
+	while (!enough_free_pebs(ubi, min_limit)) {
 		spin_unlock(&ubi->wl_lock);
 
 		ubi_eba_consolidate(ubi);
@@ -1904,7 +1904,7 @@ static int produce_free_peb(struct ubi_device *ubi)
 			spin_lock(&ubi->wl_lock);
 
 			/* Work can finish before we tried to join. */
-			if (enough_free_pebs(ubi))
+			if (enough_free_pebs(ubi, min_limit))
 				break;
 
 			/* Nothing to do. We have to give up. */
@@ -1928,7 +1928,7 @@ static int produce_free_peb(struct ubi_device *ubi)
  * negative error code in case of failure.
  * Returns with ubi->fm_eba_sem held in read mode!
  */
-int ubi_wl_get_peb(struct ubi_device *ubi, bool producing)
+int ubi_wl_get_peb(struct ubi_device *ubi, bool producing, int min_limit)
 {
 	int err = 0;
 	struct ubi_wl_entry *e;
@@ -1937,8 +1937,8 @@ retry:
 	down_read(&ubi->fm_eba_sem);
 	spin_lock(&ubi->wl_lock);
 
-	if (!enough_free_pebs(ubi) && !producing) {
-		err = produce_free_peb(ubi);
+	if (!enough_free_pebs(ubi, min_limit) && !producing) {
+		err = produce_free_peb(ubi, min_limit);
 		if (err < 0) {
 			ubi_err(ubi, "unable to produce free eraseblocks: %i", err);
 			spin_unlock(&ubi->wl_lock);
@@ -1947,8 +1947,7 @@ retry:
 		spin_unlock(&ubi->wl_lock);
 		up_read(&ubi->fm_eba_sem);
 		goto retry;
-	}
-	else if (!ubi->free_count && producing) {
+	} else if (!enough_free_pebs(ubi, min_limit) && producing) {
 		ubi_err(ubi, "no free eraseblocks in producing case");
 		ubi_assert(0);
 		spin_unlock(&ubi->wl_lock);

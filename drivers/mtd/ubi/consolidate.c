@@ -176,7 +176,7 @@ static int consolidate_lebs(struct ubi_device *ubi)
 
 	mutex_lock(&ubi->buf_mutex);
 
-	pnum = ubi_wl_get_peb(ubi, true);
+	pnum = ubi_wl_get_peb(ubi, true, 0);
 	if (pnum < 0) {
 		err = pnum;
 		//TODO cleanup exit path

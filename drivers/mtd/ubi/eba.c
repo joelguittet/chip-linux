@@ -614,7 +614,15 @@ static int recover_peb(struct ubi_device *ubi, int pnum, int vol_id, int lnum,
 		return -ENOMEM;
 
 retry:
-	new_pnum = ubi_wl_get_peb(ubi, false);
+	/*
+	 * We need a new PEB, just make sure we don't steal PEBs from reserved
+	 * pools.
+	 */
+	new_pnum = ubi_wl_get_peb(ubi, false,
+			      UBI_CONSO_RESERVED_PEBS +
+			      UBI_EBA_RESERVED_PEBS +
+			      UBI_WL_RESERVED_PEBS +
+			      ubi->beb_rsvd_pebs);
 	if (new_pnum < 0) {
 		ubi_free_vid_hdr(ubi, vid_hdr);
 		up_read(&ubi->fm_eba_sem);
@@ -755,7 +763,7 @@ int ubi_eba_write_leb(struct ubi_device *ubi, struct ubi_volume *vol, int lnum,
 
 		ubi_eba_leb_write_unlock(ubi, vol_id, lnum);
 
-		if (full && !err && ubi_conso_consolidation_needed(ubi))
+		if (full && !err & ubi_conso_consolidation_needed(ubi))
 			ubi_conso_schedule(ubi);
 
 		return err;
@@ -779,7 +787,15 @@ int ubi_eba_write_leb(struct ubi_device *ubi, struct ubi_volume *vol, int lnum,
 	vid_hdr->data_pad = cpu_to_be32(vol->data_pad);
 
 retry:
-	pnum = ubi_wl_get_peb(ubi, false);
+	/*
+	 * We need a new PEB, just make sure we don't steal PEBs from reserved
+	 * pools.
+	 */
+	pnum = ubi_wl_get_peb(ubi, false,
+			      UBI_CONSO_RESERVED_PEBS +
+			      UBI_EBA_RESERVED_PEBS +
+			      UBI_WL_RESERVED_PEBS +
+			      ubi->beb_rsvd_pebs);
 	if (pnum < 0) {
 		ubi_free_vid_hdr(ubi, vid_hdr);
 		ubi_eba_leb_write_unlock(ubi, vol_id, lnum);
@@ -914,7 +930,15 @@ int ubi_eba_write_leb_st(struct ubi_device *ubi, struct ubi_volume *vol,
 	vid_hdr->data_crc = cpu_to_be32(crc);
 
 retry:
-	pnum = ubi_wl_get_peb(ubi, false);
+	/*
+	 * We need a new PEB, just make sure we don't steal PEBs from reserved
+	 * pools.
+	 */
+	pnum = ubi_wl_get_peb(ubi, false,
+			      UBI_CONSO_RESERVED_PEBS +
+			      UBI_EBA_RESERVED_PEBS +
+			      UBI_WL_RESERVED_PEBS +
+			      ubi->beb_rsvd_pebs);
 	if (pnum < 0) {
 		ubi_free_vid_hdr(ubi, vid_hdr);
 		ubi_eba_leb_write_unlock(ubi, vol_id, lnum);
@@ -1049,7 +1073,16 @@ int ubi_eba_atomic_leb_change(struct ubi_device *ubi, struct ubi_volume *vol,
 	vid_hdr->data_crc = cpu_to_be32(crc);
 
 retry:
-	pnum = ubi_wl_get_peb(ubi, false);
+	/*
+	 * Because of consolidated PEBs we can't guarantee that a PEB
+	 * will be released after this operation. Make sure we have
+	 * enough PEBs to atomically update the LEB without stealing
+	 * LEBs from reserved pools.
+	 */
+	pnum = ubi_wl_get_peb(ubi, false,
+			      UBI_CONSO_RESERVED_PEBS +
+			      UBI_WL_RESERVED_PEBS +
+			      ubi->beb_rsvd_pebs);
 	if (pnum < 0) {
 		err = pnum;
 		up_read(&ubi->fm_eba_sem);
