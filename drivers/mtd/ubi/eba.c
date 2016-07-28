@@ -1009,7 +1009,7 @@ int ubi_eba_atomic_leb_change(struct ubi_device *ubi, struct ubi_volume *vol,
 	struct ubi_vid_hdr *vid_hdr;
 	bool release_peb = false;
 	uint32_t crc;
-	bool full;
+	bool full, old_full;
 
 	if (ubi->ro_mode)
 		return -EROFS;
@@ -1055,6 +1055,12 @@ retry:
 		up_read(&ubi->fm_eba_sem);
 		goto out_leb_unlock;
 	}
+
+	/*
+	 * Make sure we remove the LEB from the FULL list to prevent the
+	 * consolidation worker from trying to consolidate it.
+	 */
+	old_full = ubi_conso_remove_full_leb(ubi, vol_id, lnum);
 
 	dbg_eba("change LEB %d:%d, PEB %d, write VID hdr to PEB %d",
 		vol_id, lnum, vol->eba_tbl[lnum], pnum);
@@ -1108,6 +1114,10 @@ out_mutex:
 	return err;
 
 write_error:
+	/* Restore the LEB in the full list if it was previously full. */
+	if (old_full)
+		ubi_conso_add_full_leb(ubi, vol_id, lnum);
+
 	if (err != -EIO || !ubi->bad_allowed) {
 		/*
 		 * This flash device does not admit of bad eraseblocks or

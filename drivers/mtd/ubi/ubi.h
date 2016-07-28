@@ -937,6 +937,7 @@ struct ubi_leb_desc *ubi_conso_get_consolidated(struct ubi_device *ubi,
 bool ubi_conso_invalidate_leb(struct ubi_device *ubi, int pnum,
 			      int vol_id, int lnum);
 int ubi_conso_add_full_leb(struct ubi_device *ubi, int vol_id, int lnum);
+bool ubi_conso_remove_full_leb(struct ubi_device *ubi, int vol_id, int lnum);
 int ubi_conso_init(struct ubi_device *ubi);
 void ubi_conso_close(struct ubi_device *ubi);
 int ubi_conso_sync(struct ubi_device *ubi);

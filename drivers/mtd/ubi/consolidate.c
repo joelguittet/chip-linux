@@ -423,10 +423,10 @@ void ubi_eba_consolidate(struct ubi_device *ubi)
 		ubi_conso_schedule(ubi);
 }
 
-static void ubi_conso_remove_full_leb(struct ubi_device *ubi, int vol_id,
-				      int lnum)
+bool ubi_conso_remove_full_leb(struct ubi_device *ubi, int vol_id, int lnum)
 {
 	struct ubi_full_leb *fleb;
+	bool full = false;
 
 	spin_lock(&ubi->full_lock);
 	list_for_each_entry(fleb, &ubi->full, node) {
@@ -434,10 +434,13 @@ static void ubi_conso_remove_full_leb(struct ubi_device *ubi, int vol_id,
 			ubi->full_count--;
 			list_del(&fleb->node);
 			kfree(fleb);
+			full = true;
 			break;
 		}
 	}
 	spin_unlock(&ubi->full_lock);
+
+	return full;
 }
 
 struct ubi_leb_desc *
