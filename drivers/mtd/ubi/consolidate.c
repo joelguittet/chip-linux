@@ -369,6 +369,12 @@ static bool consolidation_possible(struct ubi_device *ubi)
 	if (ubi->full_count < ubi->lebs_per_cpeb)
 		return false;
 
+	/*
+	 * Do not even try to consolidate if we don't have enough free PEBs.
+	 */
+	if (ubi->free_count < UBI_CONSO_RESERVED_PEBS)
+		return false;
+
 	return true;
 }
 
