@@ -1095,6 +1095,11 @@ retry:
 		release_peb = ubi_conso_invalidate_leb(ubi, old_pnum, vol_id, lnum);
 	up_read(&ubi->fm_eba_sem);
 
+	if (!full && old_full)
+		ubi_warn(ubi,
+			 "LEB %d:%d changed from full to partially-written state!",
+			 vol_id, lnum);
+
 	if (full) {
 		int ret;
 
