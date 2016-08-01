@@ -344,6 +344,8 @@ int ubi_compare_lebs(struct ubi_device *ubi, const struct ubi_ainf_leb *aeb,
 	struct ubi_vid_hdr *vh = NULL;
 	unsigned long long sqnum2 = be64_to_cpu(vid_hdr->sqnum);
 
+//TODO: make this depend on vid_hdr->version, for MLC sqnum2 == aeb->sqnum is ok when sqnum = 0
+#if 0
 	if (sqnum2 == aeb->sqnum) {
 		/*
 		 * This must be a really ancient UBI image which has been
@@ -356,6 +358,7 @@ int ubi_compare_lebs(struct ubi_device *ubi, const struct ubi_ainf_leb *aeb,
 		ubi_err(ubi, "unsupported on-flash UBI format");
 		return -EINVAL;
 	}
+#endif
 
 	/* Obviously the LEB with lower sequence counter is older */
 	second_is_newer = (sqnum2 > aeb->sqnum);

@@ -1506,8 +1506,23 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 	for (i = 0; i < nvidh; i++) {
 		uint32_t crc;
 
-		if (lnum[i] < 0)
+		if (lnum[i] < 0) {
+			/*
+			 * This consolidated LEB is no longer valid, on flash
+			 * exists a newer version. Since we copy the whole PEB
+			 * attach will fail because two LEBs (old invalid and
+			 * copy of old invalid) will have the same sqnum.
+			 * On the other hand we are also not allowed to
+			 * increase the sqnum of an invalid LEB, it will
+			 * outdate the correct one and cause data corruption.
+			 * Therefore we set sqnum to 0. UBI handles sqnum 0 in
+			 * a special way. Multiple LEBs with sqnum 0 are okay
+			 * and every LEB != 0 is by definition newer than 0.
+			 */
+			vid_hdr[i].sqnum = 0;
+			vid_hdr[i].copy_flag = 0;
 			continue;
+		}
 
 		if (!be32_to_cpu(vid_hdr[i].data_size)) {
 			int data_size;
