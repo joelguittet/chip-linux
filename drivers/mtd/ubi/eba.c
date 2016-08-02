@@ -1521,6 +1521,8 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 			 */
 			vid_hdr[i].sqnum = 0;
 			vid_hdr[i].copy_flag = 0;
+			vid_hdr[i].data_crc = 0;
+			vid_hdr[i].data_size = 0;
 			continue;
 		}
 
