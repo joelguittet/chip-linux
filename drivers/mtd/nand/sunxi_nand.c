@@ -378,6 +378,7 @@ static int sunxi_nfc_dma_op_prepare(struct mtd_info *mtd, const void *buf,
 				       tdir, DMA_CTRL_ACK);
 	if (!dmad) {
 		ret = -EINVAL;
+		dev_err(nfc->dev, "unable to prepare slave sg");
 		goto err_unmap_buf;
 	}
 
