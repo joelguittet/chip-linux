@@ -784,22 +784,17 @@ sun4i_dma_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 	u32 endpoints;
 	int i;
 
-	if (!sgl) {
-		pr_err("XXX failing at %i\n", __LINE__);
+	if (!sgl)
 		return NULL;
-	}
 
 	if (!is_slave_direction(dir)) {
-		pr_err("XXX failing at %i\n", __LINE__);
 		dev_err(chan2dev(chan), "Invalid DMA direction\n");
 		return NULL;
 	}
 
 	contract = generate_dma_contract();
-	if (!contract) {
-		pr_err("XXX failing at %i\n", __LINE__);
+	if (!contract)
 		return NULL;
-	}
 
 	if (vchan->is_dedicated) {
 		io_mode = SUN4I_DDMA_ADDR_MODE_IO;
@@ -842,10 +837,8 @@ sun4i_dma_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 							sg_dma_len(sg),
 							sconfig, dir);
 
-		if (!promise) {
-			pr_err("XXX failing at %i\n", __LINE__);
+		if (!promise)
 			return NULL; /* TODO: should we free everything? */
-		}
 
 		promise->cfg |= endpoints;
 		promise->para = vchan->scfg.para;
