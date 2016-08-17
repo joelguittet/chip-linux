@@ -170,6 +170,17 @@ restart:
 		goto restart;
 
 	clear_bit(HCI_UART_SENDING, &hu->tx_state);
+
+	/*
+	 * One last check to make sure hci_uart_tx_wakeup() did not set
+	 * HCI_UART_TX_WAKEUP while we where clearing HCI_UART_SENDING.
+	 * The work might have been scheduled by someone else in the
+	 * meantime, in this case we return directly.
+	 */
+	if (test_bit(HCI_UART_TX_WAKEUP, &hu->tx_state) &&
+	    !test_and_set_bit(HCI_UART_SENDING, &hu->tx_state))
+		goto restart;
+
 }
 
 static void hci_uart_init_work(struct work_struct *work)
