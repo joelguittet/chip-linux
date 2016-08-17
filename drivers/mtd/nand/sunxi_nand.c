@@ -2088,8 +2088,6 @@ static int sunxi_nand_chip_init(struct device *dev, struct sunxi_nfc *nfc,
 	}
 	nand->bbt_options |= NAND_BBT_SCANRAWMODE;
 
-	nand->options |= NAND_SUBPAGE_READ;
-
 	ret = sunxi_nand_chip_init_timings(chip, np);
 	if (ret) {
 		dev_err(dev, "could not configure chip timings: %d\n", ret);
