@@ -60,6 +60,18 @@
 			compatible = "arm,cortex-a8";
 			reg = <0x0>;
 			clocks = <&cpu>;
+			cpu-idle-states = <&DDR_SR>;
+		};
+
+		idle-states {
+			DDR_SR: ddr-sr {
+				compatible = "arm,idle-state";
+				idle-state-name = "DDR self-refresh";
+				arm,psci-suspend-param = <0>;
+				entry-latency-us = <10>;
+				exit-latency-us = <10>;
+				min-residency-us = <10000>;
+			};
 		};
 	};
 
