@@ -1508,16 +1508,18 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 		if (lnum[i] < 0) {
 			/*
 			 * This consolidated LEB is no longer valid, on flash
-			 * exists a newer version. Since we copy the whole PEB
-			 * attach will fail because two LEBs (old invalid and
-			 * copy of old invalid) will have the same sqnum.
-			 * On the other hand we are also not allowed to
-			 * increase the sqnum of an invalid LEB, it will
-			 * outdate the correct one and cause data corruption.
-			 * Therefore we set sqnum to 0. UBI handles sqnum 0 in
-			 * a special way. Multiple LEBs with sqnum 0 are okay
-			 * and every LEB != 0 is by definition newer than 0.
+			 * exists a newer version, or the LEB has been unmapped.
+			 * Since we copy the whole PEB, attach can fail because
+			 * two LEBs (old invalid and copy of old invalid) will
+			 * have the same sqnum, but it can also bring back to
+			 * life an old version of the LEB if it has simply be
+			 * unmapped.
+			 * Mark the LEB as invalid by setting lnum to
+			 * UBI_LEB_UNMAPPED (-1) to really invalidate the LEB.
 			 */
+			memset(ubi->peb_buf + (ubi->leb_size * i), 0,
+			       ubi->leb_size);
+			vid_hdr[i].lnum = cpu_to_be32(UBI_LEB_UNMAPPED);
 			vid_hdr[i].sqnum = 0;
 			vid_hdr[i].copy_flag = 0;
 			vid_hdr[i].data_crc = 0;

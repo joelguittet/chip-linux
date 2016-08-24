@@ -1022,12 +1022,15 @@ int ubi_io_write_ec_hdr(struct ubi_device *ubi, int pnum,
  * validate_vid_hdr - validate a volume identifier header.
  * @ubi: UBI device description object
  * @vid_hdr: the volume identifier header to check
+ * @unmapped_is_valid: whether we accept the lnum to be set to
+ *		       %UBI_LEB_UNMAPPED or not
  *
  * This function checks that data stored in the volume identifier header
  * @vid_hdr. Returns zero if the VID header is OK and %1 if not.
  */
 static int validate_vid_hdr(const struct ubi_device *ubi,
-			    const struct ubi_vid_hdr *vid_hdr)
+			    const struct ubi_vid_hdr *vid_hdr,
+			    bool unmapped_is_valid)
 {
 	int vol_type = vid_hdr->vol_type;
 	int copy_flag = vid_hdr->copy_flag;
@@ -1045,8 +1048,8 @@ static int validate_vid_hdr(const struct ubi_device *ubi,
 		goto bad;
 	}
 
-	if (vol_id < 0 || lnum < 0 || data_size < 0 || used_ebs < 0 ||
-	    data_pad < 0) {
+	if (vol_id < 0 || data_size < 0 || used_ebs < 0 || data_pad < 0 ||
+	    (lnum < 0 && !unmapped_is_valid)) {
 		ubi_err(ubi, "negative values");
 		goto bad;
 	}
@@ -1083,6 +1086,10 @@ static int validate_vid_hdr(const struct ubi_device *ubi,
 		goto bad;
 	}
 
+	/* No need to check the other fields if the LEB has been invalidated */
+	if (lnum < 0)
+		return 0;
+
 	if (vol_type == UBI_VID_STATIC) {
 		/*
 		 * Although from high-level point of view static volumes may
@@ -1098,6 +1105,7 @@ static int validate_vid_hdr(const struct ubi_device *ubi,
 			ubi_err(ubi, "zero data_size");
 			goto bad;
 		}
+
 		if (lnum < used_ebs - 1) {
 			if (data_size != usable_leb_size) {
 				ubi_err(ubi, "bad data_size");
@@ -1238,7 +1246,7 @@ int ubi_io_read_vid_hdrs(struct ubi_device *ubi, int pnum,
 			break;
 		}
 
-		ret = validate_vid_hdr(ubi, vid_hdr);
+		ret = validate_vid_hdr(ubi, vid_hdr, true);
 		if (ret && !i) {
 			ubi_err(ubi, "validation failed for PEB %d", pnum);
 			err = -EINVAL;
@@ -1481,7 +1489,7 @@ static int self_check_vid_hdr(const struct ubi_device *ubi, int pnum,
 		goto fail;
 	}
 
-	err = validate_vid_hdr(ubi, vid_hdr);
+	err = validate_vid_hdr(ubi, vid_hdr, false);
 	if (err) {
 		ubi_err(ubi, "self-check failed for PEB %d", pnum);
 		goto fail;
