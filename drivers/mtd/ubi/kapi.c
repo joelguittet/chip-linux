@@ -587,9 +587,6 @@ int ubi_leb_change(struct ubi_volume_desc *desc, int lnum, const void *buf,
 	if (vol->upd_marker)
 		return -EBADF;
 
-	if (len == 0)
-		return 0;
-
 	return ubi_eba_atomic_leb_change(ubi, vol, lnum, buf, len);
 }
 EXPORT_SYMBOL_GPL(ubi_leb_change);

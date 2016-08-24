@@ -1013,17 +1013,6 @@ int ubi_eba_atomic_leb_change(struct ubi_device *ubi, struct ubi_volume *vol,
 	if (ubi->ro_mode)
 		return -EROFS;
 
-	if (len == 0) {
-		/*
-		 * Special case when data length is zero. In this case the LEB
-		 * has to be unmapped and mapped somewhere else.
-		 */
-		err = ubi_eba_unmap_leb(ubi, vol, lnum);
-		if (err)
-			return err;
-		return ubi_eba_write_leb(ubi, vol, lnum, NULL, 0, 0);
-	}
-
 	full = (len > ubi->leb_size - ubi->min_io_size);
 
 	vid_hdr = ubi_zalloc_vid_hdr(ubi, GFP_NOFS);
@@ -1043,9 +1032,16 @@ int ubi_eba_atomic_leb_change(struct ubi_device *ubi, struct ubi_volume *vol,
 
 	crc = crc32(UBI_CRC32_INIT, buf, len);
 	vid_hdr->vol_type = UBI_VID_DYNAMIC;
-	vid_hdr->data_size = cpu_to_be32(len);
-	vid_hdr->copy_flag = 1;
-	vid_hdr->data_crc = cpu_to_be32(crc);
+
+	/*
+	 * Only set the copy_flag, data_size and data_crc to something != 0
+	 * when the length is > 0.
+	 */
+	if (len > 0) {
+		vid_hdr->data_size = cpu_to_be32(len);
+		vid_hdr->copy_flag = 1;
+		vid_hdr->data_crc = cpu_to_be32(crc);
+	}
 
 retry:
 	/*
@@ -1081,12 +1077,15 @@ retry:
 		goto write_error;
 	}
 
-	err = ubi_io_write_data(ubi, buf, pnum, 0, len);
-	if (err) {
-		ubi_warn(ubi, "failed to write %d bytes of data to PEB %d",
-			 len, pnum);
-		up_read(&ubi->fm_eba_sem);
-		goto write_error;
+	if (len > 0) {
+		err = ubi_io_write_data(ubi, buf, pnum, 0, len);
+		if (err) {
+			ubi_warn(ubi,
+				 "failed to write %d bytes of data to PEB %d",
+				 len, pnum);
+			up_read(&ubi->fm_eba_sem);
+			goto write_error;
+		}
 	}
 
 	old_pnum = vol->eba_tbl[lnum];
