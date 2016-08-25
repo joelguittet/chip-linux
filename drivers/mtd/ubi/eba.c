@@ -1013,17 +1013,6 @@ int ubi_eba_atomic_leb_change(struct ubi_device *ubi, struct ubi_volume *vol,
 	if (ubi->ro_mode)
 		return -EROFS;
 
-	if (len == 0) {
-		/*
-		 * Special case when data length is zero. In this case the LEB
-		 * has to be unmapped and mapped somewhere else.
-		 */
-		err = ubi_eba_unmap_leb(ubi, vol, lnum);
-		if (err)
-			return err;
-		return ubi_eba_write_leb(ubi, vol, lnum, NULL, 0, 0);
-	}
-
 	full = (len > ubi->leb_size - ubi->min_io_size);
 
 	vid_hdr = ubi_zalloc_vid_hdr(ubi, GFP_NOFS);
@@ -1043,9 +1032,16 @@ int ubi_eba_atomic_leb_change(struct ubi_device *ubi, struct ubi_volume *vol,
 
 	crc = crc32(UBI_CRC32_INIT, buf, len);
 	vid_hdr->vol_type = UBI_VID_DYNAMIC;
-	vid_hdr->data_size = cpu_to_be32(len);
-	vid_hdr->copy_flag = 1;
-	vid_hdr->data_crc = cpu_to_be32(crc);
+
+	/*
+	 * Only set the copy_flag, data_size and data_crc to something != 0
+	 * when the length is > 0.
+	 */
+	if (len > 0) {
+		vid_hdr->data_size = cpu_to_be32(len);
+		vid_hdr->copy_flag = 1;
+		vid_hdr->data_crc = cpu_to_be32(crc);
+	}
 
 retry:
 	/*
@@ -1081,12 +1077,15 @@ retry:
 		goto write_error;
 	}
 
-	err = ubi_io_write_data(ubi, buf, pnum, 0, len);
-	if (err) {
-		ubi_warn(ubi, "failed to write %d bytes of data to PEB %d",
-			 len, pnum);
-		up_read(&ubi->fm_eba_sem);
-		goto write_error;
+	if (len > 0) {
+		err = ubi_io_write_data(ubi, buf, pnum, 0, len);
+		if (err) {
+			ubi_warn(ubi,
+				 "failed to write %d bytes of data to PEB %d",
+				 len, pnum);
+			up_read(&ubi->fm_eba_sem);
+			goto write_error;
+		}
 	}
 
 	old_pnum = vol->eba_tbl[lnum];
@@ -1509,16 +1508,18 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 		if (lnum[i] < 0) {
 			/*
 			 * This consolidated LEB is no longer valid, on flash
-			 * exists a newer version. Since we copy the whole PEB
-			 * attach will fail because two LEBs (old invalid and
-			 * copy of old invalid) will have the same sqnum.
-			 * On the other hand we are also not allowed to
-			 * increase the sqnum of an invalid LEB, it will
-			 * outdate the correct one and cause data corruption.
-			 * Therefore we set sqnum to 0. UBI handles sqnum 0 in
-			 * a special way. Multiple LEBs with sqnum 0 are okay
-			 * and every LEB != 0 is by definition newer than 0.
+			 * exists a newer version, or the LEB has been unmapped.
+			 * Since we copy the whole PEB, attach can fail because
+			 * two LEBs (old invalid and copy of old invalid) will
+			 * have the same sqnum, but it can also bring back to
+			 * life an old version of the LEB if it has simply be
+			 * unmapped.
+			 * Mark the LEB as invalid by setting lnum to
+			 * UBI_LEB_UNMAPPED (-1) to really invalidate the LEB.
 			 */
+			memset(ubi->peb_buf + (ubi->leb_size * i), 0,
+			       ubi->leb_size);
+			vid_hdr[i].lnum = cpu_to_be32(UBI_LEB_UNMAPPED);
 			vid_hdr[i].sqnum = 0;
 			vid_hdr[i].copy_flag = 0;
 			vid_hdr[i].data_crc = 0;
