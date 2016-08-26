@@ -533,7 +533,7 @@ static int fix_unclean_leb(struct ubifs_info *c, struct ubifs_scan_leb *sleb,
 		dbg_rcvry("fixing LEB %d start %d endpt %d",
 			  lnum, start, sleb->endpt);
 		if (endpt == 0) {
-			err = ubifs_leb_unmap(c, lnum);
+			err = ubifs_leb_change(c, lnum, NULL, 0);
 			if (err)
 				return err;
 		} else {
