@@ -2615,7 +2615,7 @@ int dbg_leb_unmap(struct ubifs_info *c, int lnum)
 		return -EROFS;
 	if (power_cut_emulated(c, lnum, 0))
 		return -EROFS;
-	err = ubi_leb_change(c->ubi, lnum, NULL, 0);
+	err = ubi_leb_unmap(c->ubi, lnum);
 	if (err)
 		return err;
 	if (power_cut_emulated(c, lnum, 0))

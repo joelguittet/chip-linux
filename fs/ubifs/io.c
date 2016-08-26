@@ -163,7 +163,7 @@ int ubifs_leb_unmap(struct ubifs_info *c, int lnum)
 	if (c->ro_error)
 		return -EROFS;
 	if (!dbg_is_tst_rcvry(c))
-		err = ubi_leb_change(c->ubi, lnum, NULL, 0);
+		err = ubi_leb_unmap(c->ubi, lnum);
 	else
 		err = dbg_leb_unmap(c, lnum);
 	if (err) {
@@ -181,10 +181,6 @@ int ubifs_leb_map(struct ubifs_info *c, int lnum)
 	ubifs_assert(!c->ro_media && !c->ro_mount);
 	if (c->ro_error)
 		return -EROFS;
-
-	if (ubi_is_mapped(c->ubi, lnum))
-		return 0;
-
 	if (!dbg_is_tst_rcvry(c))
 		err = ubi_leb_map(c->ubi, lnum);
 	else
