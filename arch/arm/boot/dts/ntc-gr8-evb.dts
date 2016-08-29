@@ -76,6 +76,21 @@
 		default-brightness-level = <8>;
 	};
 
+	i2s {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "gr8-evb-wm8978";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,mclk-fs = <512>;
+
+		simple-audio-card,cpu {
+			sound-dai = <&i2s0>;
+		};
+
+		simple-audio-card,codec {
+			sound-dai = <&wm8978>;
+		};
+	};
+
 	panel {
 		compatible = "allwinner,sun4i-a10-sub-evb-5-lcd";
 		enable-gpios = <&axp_gpio 0 GPIO_ACTIVE_HIGH>;
