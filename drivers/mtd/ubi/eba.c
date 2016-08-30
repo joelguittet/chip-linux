@@ -1411,18 +1411,8 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 	spin_lock(&ubi->volumes_lock);
 
 	for (i = 0; i < nvidh; i++) {
-		lnum[i] = be32_to_cpu(vid_hdr[i].lnum);
-
-		/*
-		 * The LEB may have been invalidated during a previous
-		 * ubi_copy_lebs(). Simply ignore this entry.
-		 */
-		if (lnum[i] < 0) {
-			nlebs--;
-			continue;
-		}
-
 		vol_id[i] = be32_to_cpu(vid_hdr[i].vol_id);
+		lnum[i] = be32_to_cpu(vid_hdr[i].lnum);
 		vol[i] = ubi->volumes[vol_id2idx(ubi, vol_id[i])];
 	}
 
@@ -1435,13 +1425,6 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 	spin_unlock(&ubi->volumes_lock);
 
 	for (i = 0; i < nvidh; i++) {
-		/*
-		 * The LEB may have been invalidated during a previous
-		 * ubi_copy_lebs(). Simply ignore this entry.
-		 */
-		if (lnum[i] < 0)
-			continue;
-
 		if (!vol[i]) {
 			/* No need to do further work, cancel */
 			ubi_msg(ubi, "volume %d is being removed, cancel", vol_id[i]);
@@ -1469,13 +1452,6 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 	 */
 
 	for (i = 0; i < nvidh; i++) {
-		/*
-		 * The LEB may have been invalidated during a previous
-		 * ubi_copy_lebs(). Simply ignore this entry.
-		 */
-		if (lnum[i] < 0)
-			continue;
-
 		err = ubi_eba_leb_write_trylock(ubi, vol_id[i], lnum[i]);
 		if (err) {
 			int j;
@@ -1491,18 +1467,10 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 	}
 	for (i = 0; i < nvidh; i++) {
 		/*
-		 * The LEB may have been invalidated during a previous
-		 * ubi_copy_lebs(). Simply ignore this entry.
-		 */
-		if (lnum[i] < 0)
-			continue;
-
-		/*
 		 * The LEB might have been put meanwhile, and the task which put it is
 		 * probably waiting on @ubi->move_mutex. No need to continue the work,
 		 * cancel it.
 		 */
-
 		if (vol[i]->eba_tbl[lnum[i]] != from) {
 			ubi_eba_leb_write_unlock(ubi, vol_id[i], lnum[i]);
 			lnum[i] = -1;
@@ -1535,6 +1503,8 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 
 	cond_resched();
 	for (i = 0; i < nvidh; i++) {
+		uint32_t crc;
+
 		if (lnum[i] < 0) {
 			/*
 			 * This consolidated LEB is no longer valid, on flash
@@ -1557,12 +1527,16 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 			continue;
 		}
 
-		/*
-		 * We're copying a consolidated LEB: data_size should be != 0
-		 * and copy_flag should be set.
-		 */
-		ubi_assert(be32_to_cpu(vid_hdr[i].data_size));
-		ubi_assert(vid_hdr[i].copy_flag);
+		if (!be32_to_cpu(vid_hdr[i].data_size)) {
+			int data_size;
+
+			data_size = ubi->leb_size - be32_to_cpu(vid_hdr->data_pad);
+			crc = crc32(UBI_CRC32_INIT, ubi->peb_buf + ubi->leb_start + (i * ubi->leb_size), data_size);
+			vid_hdr[i].data_crc = cpu_to_be32(crc);
+			vid_hdr[i].data_size = cpu_to_be32(data_size);
+			cond_resched();
+		}
+		vid_hdr[i].copy_flag = 1;
 		vid_hdr[i].sqnum = cpu_to_be64(ubi_next_sqnum(ubi));
 	}
 
@@ -1587,7 +1561,7 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 
 	down_read(&ubi->fm_eba_sem);
 	for (i = 0; i < nvidh; i++) {
-		if (lnum[i] < 0) {
+		if (vol_id[i] != -1) {
 			ubi_assert(vol[i]->eba_tbl[lnum[i]] == from);
 			vol[i]->eba_tbl[lnum[i]] = to;
 		}
@@ -1602,8 +1576,9 @@ out_unlock_buf:
 	mutex_unlock(&ubi->buf_mutex);
 out_unlock_leb:
 	for (i = 0; i < nvidh; i++) {
-		if (lnum[i] < 0)
+		if (vol_id[i] != -1) {
 			ubi_eba_leb_write_unlock(ubi, vol_id[i], lnum[i]);
+		}
 	}
 	kfree(vol_id);
 	kfree(lnum);
