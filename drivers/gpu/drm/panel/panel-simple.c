@@ -386,6 +386,29 @@ static void panel_simple_shutdown(struct device *dev)
 	panel_simple_disable(&panel->base);
 }
 
+static const struct drm_display_mode allwinner_a10_sub_evb_5lcd_mode = {
+	.clock = 33000,
+	.hdisplay = 800,
+	.hsync_start = 800 + 209,
+	.hsync_end = 800 + 209 + 1,
+	.htotal = 800 + 209 + 1 + 45,
+	.vdisplay = 480,
+	.vsync_start = 480 + 22,
+	.vsync_end = 480 + 22 + 1,
+	.vtotal = 480 + 22 + 1 + 22,
+	.vrefresh = 60,
+};
+
+static const struct panel_desc allwinner_a10_sub_evb_5lcd = {
+	.modes = &allwinner_a10_sub_evb_5lcd_mode,
+	.num_modes = 1,
+	.size = {
+		.width = 110,
+		.height = 67,
+	},
+	.bus_format = MEDIA_BUS_FMT_RGB666_1X18,
+};
+
 static const struct drm_display_mode ampire_am800480r3tmqwa1h_mode = {
 	.clock = 33333,
 	.hdisplay = 800,
@@ -1554,6 +1577,9 @@ static const struct panel_desc urt_umsh_8596md_parallel = {
 
 static const struct of_device_id platform_of_match[] = {
 	{
+		.compatible = "allwinner,sun4i-a10-sub-evb-5-lcd",
+		.data = &allwinner_a10_sub_evb_5lcd,
+	}, {
 		.compatible = "ampire,am800480r3tmqwa1h",
 		.data = &ampire_am800480r3tmqwa1h,
 	}, {
