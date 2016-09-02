@@ -1111,11 +1111,8 @@ retry:
 
 out_leb_unlock:
 	ubi_eba_leb_write_unlock(ubi, vol_id, lnum);
-	if (release_peb) {
+	if (release_peb)
 		err = ubi_wl_put_peb(ubi, old_pnum, 0);
-		if (err)
-			goto out_leb_unlock;
-	}
 out_mutex:
 	mutex_unlock(&ubi->alc_mutex);
 	ubi_free_vid_hdr(ubi, vid_hdr);
@@ -1480,8 +1477,12 @@ int ubi_eba_copy_lebs(struct ubi_device *ubi, int from, int to,
 		if (err) {
 			int j;
 
-			for (j = 0; j < i; j++)
+			for (j = 0; j < i; j++) {
+				if (lnum[j] < 0)
+					continue;
+
 				ubi_eba_leb_write_unlock(ubi, vol_id[j], lnum[j]);
+			}
 
 			kfree(vol_id);
 			kfree(lnum);
