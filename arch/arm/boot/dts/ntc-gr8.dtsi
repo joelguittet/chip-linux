@@ -932,7 +932,7 @@
 		};
 
 		lradc: lradc@01c22800 {
-			compatible = "allwinner,sun4i-a10-lradc-keys";
+			compatible = "allwinner,sun4i-a10-lradc";
 			reg = <0x01c22800 0x100>;
 			interrupts = <31>;
 			status = "disabled";
