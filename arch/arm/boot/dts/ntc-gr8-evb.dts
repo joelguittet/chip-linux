@@ -75,6 +75,26 @@
 		brightness-levels = <0 10 20 30 40 50 60 70 80 90 100>;
 		default-brightness-level = <8>;
 	};
+
+	panel {
+		compatible = "allwinner,sun4i-a10-sub-evb-5-lcd";
+		enable-gpios = <&axp_gpio 0 GPIO_ACTIVE_HIGH>;
+		backlight = <&backlight>;
+		power-supply = <&reg_vcc3v0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			panel_input: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&tcon0_out_panel>;
+			};
+		};
+	};
 };
 
 &be0 {
@@ -330,6 +350,22 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&spdif_tx_pins_a>;
 	status = "okay";
+};
+
+&tcon0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&lcd_rgb666_pins>;
+	status = "okay";
+};
+
+&tcon0_out {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	tcon0_out_panel: endpoint@0 {
+		reg = <0>;
+		remote-endpoint = <&panel_input>;
+	};
 };
 
 &tve0 {
