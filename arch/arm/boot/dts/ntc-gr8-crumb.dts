@@ -1,8 +1,8 @@
 /*
- * Copyright 2015 Free Electrons
- * Copyright 2015 NextThing Co
+ * Copyright 2016 Free Electrons
+ * Copyright 2016 NextThing Co
  *
- * Maxime Ripard <maxime.ripard@free-electrons.com>
+ * Mylène Josserand <mylene.josserand@free-electrons.com>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -44,51 +44,34 @@
  */
 
 /dts-v1/;
-#include "sun5i-r8.dtsi"
+#include "ntc-gr8.dtsi"
 #include "sunxi-common-regulators.dtsi"
 
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 
 / {
-	model = "NextThing C.H.I.P.";
-	compatible = "nextthing,chip", "allwinner,sun5i-r8";
+	model = "NextThing Crumb";
+	compatible = "nextthing,crumb", "nextthing,gr8";
 
 	aliases {
 		i2c0 = &i2c0;
 		i2c1 = &i2c1;
-		i2c2 = &i2c2;
 		serial0 = &uart1;
-		serial1 = &uart3;
+		serial1 = &uart2;
+		serial2 = &uart3;
 	};
 
 	chosen {
 		stdout-path = "serial0:115200n8";
 	};
 
-	leds {
-		compatible = "gpio-leds";
-
-		leds_status: status {
-			label = "chip:white:status";
-			gpios = <&axp_gpio 2 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-			linux,default-trigger = "heartbeat";
-		};
-	};
-
 	mmc0_pwrseq: mmc0_pwrseq {
 		compatible = "mmc-pwrseq-simple";
 		pinctrl-names = "default";
-		pinctrl-0 = <&chip_wifi_reg_on_pin>;
-		reset-gpios = <&pio 2 19 GPIO_ACTIVE_LOW>; /* PC19 */
-	};
-
-	onewire {
-		compatible = "w1-gpio";
-		gpios = <&pio 3 2 GPIO_ACTIVE_HIGH>; /* PD2 */
-		pinctrl-names = "default";
-		pinctrl-0 = <&chip_w1_pin>;
+		pinctrl-0 = <&wifi_reg_on_pin_crumb>;
+		reset-gpios = <&pio 1 10 GPIO_ACTIVE_LOW>; /* PB10 */
 	};
 
 	/*
@@ -103,16 +86,8 @@
 	};
 };
 
-&be0 {
-	status = "okay";
-};
-
 &codec {
 	status = "okay";
-};
-
-&cpu0 {
-	cpu-supply = <&reg_dcdc2>;
 };
 
 &ehci0 {
@@ -128,53 +103,32 @@
 		reg = <0x34>;
 
 		/*
-		 * The interrupt is routed through the "External Fast
-		 * Interrupt Request" pin (ball G13 of the module)
-		 * directly to the main interrupt controller, without
-		 * any other controller interfering.
-		 */
+		* The interrupt is routed through the "External Fast
+		* Interrupt Request" pin (ball G13 of the module)
+		* directly to the main interrupt controller, without
+		* any other controller interfering.
+		*/
 		interrupts = <0>;
 	};
 };
 
 #include "axp209.dtsi"
 
-/*
- * i2c1 is routed to the external pins and doesn't have any device
- * attached to it on the C.H.I.P itself.
- */
 &i2c1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c1_pins_a>;
 	status = "okay";
 };
 
-&i2c2 {
+&i2s0 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&i2c2_pins_a>;
+	pinctrl-0 = <&i2s0_data_pins_a>, <&i2s0_data_pins_a>;
 	status = "okay";
-
-	xio: gpio@38 {
-		compatible = "nxp,pcf8574a";
-		reg = <0x38>;
-
-		gpio-controller;
-		#gpio-cells = <2>;
-
-		interrupt-parent = <&pio>;
-		interrupts = <6 0 IRQ_TYPE_EDGE_FALLING>;
-		interrupt-controller;
-		#interrupt-cells = <2>;
-	};
 };
 
 &lradc {
-	vref-supply = <&reg_vcc3v0>;
+	vref-supply = <&reg_ldo2>;
 	status = "okay";
-};
-
-&mmc0_pins_a {
-	allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
 };
 
 &mmc0 {
@@ -190,8 +144,6 @@
 &nfc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&nand_pins_a &nand_cs0_pins_a &nand_rb0_pins_a>;
-	dmas = <&dma 1 3>;
-	dma-names = "rxtx";
 	status = "okay";
 
 	nand@0 {
@@ -237,51 +189,43 @@
 };
 
 &pio {
-	chip_vbus_pin: chip_vbus_pin@0 {
-		allwinner,pins = "PB10";
-		allwinner,function = "gpio_out";
-		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
-		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
-	};
-
-	chip_wifi_reg_on_pin: chip_wifi_reg_on_pin@0 {
-	        allwinner,pins = "PC19";
-	        allwinner,function = "gpio_out";
-	        allwinner,drive = <SUN4I_PINCTRL_10_MA>;
-	        allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
-	};
-
-	chip_id_det_pin: chip_id_det_pin@0 {
+	usb0_id_pin_crumb: usb0-id-pin@0 {
 		allwinner,pins = "PG2";
 		allwinner,function = "gpio_in";
 		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
 		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 	};
 
-	chip_w1_pin: chip_w1_pin@0 {
-		allwinner,pins = "PD2";
-		allwinner,function = "gpio_in";
-	        allwinner,drive = <SUN4I_PINCTRL_10_MA>;
-	        allwinner,pull = <SUN4I_PINCTRL_PULL_UP>;
+	wifi_reg_on_pin_crumb: wifi-reg-on-pin@0 {
+		allwinner,pins = "PB10";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
 	};
+};
+
+&pwm {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm0_pins_a>, <&pwm1_pins_a>;
+	status = "okay";
 };
 
 &reg_dcdc2 {
 	regulator-min-microvolt = <1000000>;
 	regulator-max-microvolt = <1400000>;
-	regulator-name = "cpuvdd";
+	regulator-name = "vdd-cpu";
 	regulator-always-on;
 };
 
 &reg_dcdc3 {
 	regulator-min-microvolt = <1000000>;
 	regulator-max-microvolt = <1300000>;
-	regulator-name = "corevdd";
+	regulator-name = "vdd-sys";
 	regulator-always-on;
 };
 
 &reg_ldo1 {
-	regulator-name = "rtcvdd";
+	regulator-name = "vdd-rtc";
 };
 
 &reg_ldo2 {
@@ -303,41 +247,36 @@
 	regulator-name = "vcc-wifi-2";
 };
 
-&reg_ldo5 {
-	regulator-min-microvolt = <1800000>;
-	regulator-max-microvolt = <1800000>;
-	regulator-name = "vcc-1v8";
-};
-
-&reg_usb0_vbus {
-	pinctrl-0 = <&chip_vbus_pin>;
-	vin-supply = <&reg_vcc5v0>;
-	gpio = <&pio 1 10 GPIO_ACTIVE_HIGH>; /* PB10 */
-	status = "okay";
-};
-
-&tcon0 {
-	status = "okay";
-};
-
-&tve0 {
-	status = "okay";
-};
-
 &uart1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&uart1_pins_b>;
+	pinctrl-0 = <&uart1_pins_a>, <&uart1_cts_rts_pins_a>;
+	status = "okay";
+};
+
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart2_pins_a>, <&uart2_cts_rts_pins_a>;
 	status = "okay";
 };
 
 &uart3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&uart3_pins_a>,
-		    <&uart3_pins_cts_rts_a>;
+	pinctrl-0 = <&uart3_pins_a>, <&uart3_cts_rts_pins_a>;
 	status = "okay";
 };
 
 &usb_otg {
+	/*
+	 * The GR8-EVB has a somewhat interesting design. There's a
+	 * pin supposed to control VBUS, an ID pin, a VBUS detect pin,
+	 * so everything should work just fine.
+	 *
+	 * Except that the pin supposed to control VBUS is not
+	 * connected to any controllable output, neither to the SoC
+	 * through a GPIO or to the PMIC, and it is pulled down,
+	 * meaning that we will never be able to enable VBUS on this
+	 * board.
+	 */
 	dr_mode = "otg";
 	status = "okay";
 };
@@ -348,11 +287,9 @@
 
 &usbphy {
 	pinctrl-names = "default";
-	pinctrl-0 = <&chip_id_det_pin>;
-	status = "okay";
-
+	pinctrl-0 = <&usb0_id_pin_crumb>;
 	usb0_id_det-gpio = <&pio 6 2 GPIO_ACTIVE_HIGH>; /* PG2 */
 	usb0_vbus_power-supply = <&usb_power_supply>;
-	usb0_vbus-supply = <&reg_usb0_vbus>;
 	usb1_vbus-supply = <&reg_vcc5v0>;
+	status = "okay";
 };
