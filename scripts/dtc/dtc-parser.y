@@ -19,6 +19,7 @@
  */
 %{
 #include <stdio.h>
+#include <inttypes.h>
 
 #include "dtc.h"
 #include "srcpos.h"
@@ -31,8 +32,9 @@ extern void yyerror(char const *s);
 		treesource_error = true; \
 	} while (0)
 
-extern struct boot_info *the_boot_info;
+extern struct dt_info *parser_output;
 extern bool treesource_error;
+extern unsigned int the_versionflags;
 %}
 
 %union {
@@ -50,11 +52,15 @@ extern bool treesource_error;
 	struct property *proplist;
 	struct node *node;
 	struct node *nodelist;
+	struct overlay *overlay;
+	struct overlay *overlaylist;
 	struct reserve_info *re;
 	uint64_t integer;
+	unsigned int flags;
 }
 
 %token DT_V1
+%token DT_PLUGIN
 %token DT_MEMRESERVE
 %token DT_LSHIFT DT_RSHIFT DT_LE DT_GE DT_EQ DT_NE DT_AND DT_OR
 %token DT_BITS
@@ -71,6 +77,8 @@ extern bool treesource_error;
 
 %type <data> propdata
 %type <data> propdataprefix
+%type <flags> versioninfo
+%type <flags> plugindecl
 %type <re> memreserve
 %type <re> memreserves
 %type <array> arrayprefix
@@ -78,10 +86,13 @@ extern bool treesource_error;
 %type <prop> propdef
 %type <proplist> proplist
 
-%type <node> devicetree
 %type <node> nodedef
 %type <node> subnode
 %type <nodelist> subnodes
+
+%type <node> basetree
+%type <overlay> overlay
+%type <overlaylist> overlays
 
 %type <integer> integer_prim
 %type <integer> integer_unary
@@ -101,10 +112,36 @@ extern bool treesource_error;
 %%
 
 sourcefile:
-	  DT_V1 ';' memreserves devicetree
+	  versioninfo plugindecl memreserves basetree overlays
 		{
-			the_boot_info = build_boot_info($3, $4,
+			assert(($1 | $2) == the_versionflags);
+			parser_output = build_dt_info($1 | $2, $3, $4, $5,
 							guess_boot_cpuid($4));
+		}
+	;
+
+versioninfo:
+	v1tag
+		{
+			the_versionflags |= VF_DT_V1;
+			$$ = VF_DT_V1;
+		}
+	;
+
+v1tag:
+	  DT_V1 ';'
+	| DT_V1 ';' v1tag
+	| DT_V1
+
+plugindecl:
+	DT_PLUGIN ';'
+		{
+			the_versionflags |= VF_PLUGIN;
+			$$ = the_versionflags;
+		}
+	| /* empty */
+		{
+			$$ = 0;
 		}
 	;
 
@@ -131,48 +168,40 @@ memreserve:
 		}
 	;
 
-devicetree:
+basetree:
 	  '/' nodedef
 		{
 			$$ = name_node($2, "");
 		}
-	| devicetree '/' nodedef
+	;
+
+overlay:  basetree
 		{
-			$$ = merge_nodes($1, $3);
+			$$ = build_overlay("/", $1);
 		}
-
-	| devicetree DT_LABEL DT_REF nodedef
+	| DT_REF nodedef
 		{
-			struct node *target = get_node_by_ref($1, $3);
-
-			add_label(&target->labels, $2);
-			if (target)
-				merge_nodes(target, $4);
-			else
-				ERROR(&@3, "Label or path %s not found", $3);
-			$$ = $1;
+			$$ = build_overlay($1, $2);
 		}
-	| devicetree DT_REF nodedef
+	| DT_DEL_NODE DT_REF ';'
 		{
-			struct node *target = get_node_by_ref($1, $2);
-
-			if (target)
-				merge_nodes(target, $3);
-			else
-				ERROR(&@2, "Label or path %s not found", $2);
-			$$ = $1;
+			$$ = build_overlay($2, NULL);
 		}
-	| devicetree DT_DEL_NODE DT_REF ';'
+	| DT_LABEL overlay
 		{
-			struct node *target = get_node_by_ref($1, $3);
+			add_label(&$2->dt->labels, $1);
+			$$ = $2;
+		}
+	;
 
-			if (target)
-				delete_node(target);
-			else
-				ERROR(&@3, "Label or path %s not found", $3);
-
-
-			$$ = $1;
+overlays:
+	  /* empty */
+		{
+			$$ = NULL;
+		}
+	| overlay overlays
+		{
+			$$ = chain_overlay($1, $2);
 		}
 	;
 

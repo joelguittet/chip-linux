@@ -75,6 +75,59 @@
 		brightness-levels = <0 10 20 30 40 50 60 70 80 90 100>;
 		default-brightness-level = <8>;
 	};
+
+	i2s {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "gr8-evb-wm8978";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,mclk-fs = <512>;
+
+		simple-audio-card,cpu {
+			sound-dai = <&i2s0>;
+		};
+
+		simple-audio-card,codec {
+			sound-dai = <&wm8978>;
+		};
+	};
+
+	panel {
+		compatible = "allwinner,sun4i-a10-sub-evb-5-lcd";
+		enable-gpios = <&axp_gpio 0 GPIO_ACTIVE_HIGH>;
+		backlight = <&backlight>;
+		power-supply = <&reg_vcc3v0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			panel_input: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&tcon0_out_panel>;
+			};
+		};
+	};
+
+	spdif {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "On-board SPDIF";
+
+		simple-audio-card,cpu {
+			sound-dai = <&spdif>;
+		};
+
+		simple-audio-card,codec {
+			sound-dai = <&spdif_out>;
+		};
+	};
+
+	spdif_out: spdif-out {
+		#sound-dai-cells = <0>;
+		compatible = "linux,spdif-dit";
+	};
 };
 
 &be0 {
@@ -211,9 +264,40 @@
 &nfc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&nand_pins_a &nand_cs0_pins_a &nand_rb0_pins_a>;
+	status = "okay";
 
-	/* MLC Support sucks for now */
-	status = "disabled";
+	nand@0 {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		reg = <0>;
+		allwinner,rb = <0>;
+		nand-ecc-mode = "hw";
+
+		spl@0 {
+			label = "SPL";
+			reg = /bits/ 64 <0x0 0x400000>;
+		};
+
+		spl-backup@400000 {
+			label = "SPL.backup";
+			reg = /bits/ 64 <0x400000 0x400000>;
+		};
+
+		u-boot@800000 {
+			label = "U-Boot";
+			reg = /bits/ 64 <0x800000 0x400000>;
+		};
+
+		env@c00000 {
+			label = "env";
+			reg = /bits/ 64 <0xc00000 0x400000>;
+		};
+
+		rootfs@1000000 {
+			label = "rootfs";
+			reg = /bits/ 64 <0x1000000 0x1ff000000>;
+		};
+	};
 };
 
 &ohci0 {
@@ -299,6 +383,22 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&spdif_tx_pins_a>;
 	status = "okay";
+};
+
+&tcon0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&lcd_rgb666_pins>;
+	status = "okay";
+};
+
+&tcon0_out {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	tcon0_out_panel: endpoint@0 {
+		reg = <0>;
+		remote-endpoint = <&panel_input>;
+	};
 };
 
 &tve0 {

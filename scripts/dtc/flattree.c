@@ -335,6 +335,7 @@ static struct data flatten_reserve_list(struct reserve_info *reservelist,
 }
 
 static void make_fdt_header(struct fdt_header *fdt,
+			    fdt32_t magic,
 			    struct version_info *vi,
 			    int reservesize, int dtsize, int strsize,
 			    int boot_cpuid_phys)
@@ -345,7 +346,7 @@ static void make_fdt_header(struct fdt_header *fdt,
 
 	memset(fdt, 0xff, sizeof(*fdt));
 
-	fdt->magic = cpu_to_fdt32(FDT_MAGIC);
+	fdt->magic = cpu_to_fdt32(magic);
 	fdt->version = cpu_to_fdt32(vi->version);
 	fdt->last_comp_version = cpu_to_fdt32(vi->last_comp_version);
 
@@ -366,7 +367,7 @@ static void make_fdt_header(struct fdt_header *fdt,
 		fdt->size_dt_struct = cpu_to_fdt32(dtsize);
 }
 
-void dt_to_blob(FILE *f, struct boot_info *bi, int version)
+void dt_to_blob(FILE *f, struct dt_info *dti, fdt32_t magic, int version)
 {
 	struct version_info *vi = NULL;
 	int i;
@@ -384,28 +385,35 @@ void dt_to_blob(FILE *f, struct boot_info *bi, int version)
 	if (!vi)
 		die("Unknown device tree blob version %d\n", version);
 
-	flatten_tree(bi->dt, &bin_emitter, &dtbuf, &strbuf, vi);
+	flatten_tree(dti->dt, &bin_emitter, &dtbuf, &strbuf, vi);
 	bin_emit_cell(&dtbuf, FDT_END);
 
-	reservebuf = flatten_reserve_list(bi->reservelist, vi);
+	reservebuf = flatten_reserve_list(dti->reservelist, vi);
 
 	/* Make header */
-	make_fdt_header(&fdt, vi, reservebuf.len, dtbuf.len, strbuf.len,
-			bi->boot_cpuid_phys);
+	make_fdt_header(&fdt, magic, vi, reservebuf.len, dtbuf.len, strbuf.len,
+			dti->boot_cpuid_phys);
 
 	/*
 	 * If the user asked for more space than is used, adjust the totalsize.
 	 */
 	if (minsize > 0) {
 		padlen = minsize - fdt32_to_cpu(fdt.totalsize);
-		if ((padlen < 0) && (quiet < 1))
-			fprintf(stderr,
-				"Warning: blob size %d >= minimum size %d\n",
-				fdt32_to_cpu(fdt.totalsize), minsize);
+		if (padlen < 0) {
+			padlen = 0;
+			if (quiet < 1)
+				fprintf(stderr,
+					"Warning: blob size %d >= minimum size %d\n",
+					fdt32_to_cpu(fdt.totalsize), minsize);
+		}
 	}
 
 	if (padsize > 0)
 		padlen = padsize;
+
+	if (alignsize > 0)
+		padlen = ALIGN(fdt32_to_cpu(fdt.totalsize) + padlen, alignsize)
+			- fdt32_to_cpu(fdt.totalsize);
 
 	if (padlen > 0) {
 		int tsize = fdt32_to_cpu(fdt.totalsize);
@@ -460,7 +468,7 @@ static void dump_stringtable_asm(FILE *f, struct data strbuf)
 	}
 }
 
-void dt_to_asm(FILE *f, struct boot_info *bi, int version)
+void dt_to_asm(FILE *f, struct dt_info *dti, fdt32_t magic, int version)
 {
 	struct version_info *vi = NULL;
 	int i;
@@ -500,7 +508,7 @@ void dt_to_asm(FILE *f, struct boot_info *bi, int version)
 
 	if (vi->flags & FTF_BOOTCPUID) {
 		fprintf(f, "\t/* boot_cpuid_phys */\n");
-		asm_emit_cell(f, bi->boot_cpuid_phys);
+		asm_emit_cell(f, dti->boot_cpuid_phys);
 	}
 
 	if (vi->flags & FTF_STRTABSIZE) {
@@ -530,7 +538,7 @@ void dt_to_asm(FILE *f, struct boot_info *bi, int version)
 	 * Use .long on high and low halfs of u64s to avoid .quad
 	 * as it appears .quad isn't available in some assemblers.
 	 */
-	for (re = bi->reservelist; re; re = re->next) {
+	for (re = dti->reservelist; re; re = re->next) {
 		struct label *l;
 
 		for_each_label(re->labels, l) {
@@ -550,7 +558,7 @@ void dt_to_asm(FILE *f, struct boot_info *bi, int version)
 	fprintf(f, "\t.long\t0, 0\n\t.long\t0, 0\n");
 
 	emit_label(f, symprefix, "struct_start");
-	flatten_tree(bi->dt, &asm_emitter, f, &strbuf, vi);
+	flatten_tree(dti->dt, &asm_emitter, f, &strbuf, vi);
 
 	fprintf(f, "\t/* FDT_END */\n");
 	asm_emit_cell(f, FDT_END);
@@ -572,6 +580,8 @@ void dt_to_asm(FILE *f, struct boot_info *bi, int version)
 	if (padsize > 0) {
 		fprintf(f, "\t.space\t%d, 0\n", padsize);
 	}
+	if (alignsize > 0)
+		asm_emit_align(f, alignsize);
 	emit_label(f, symprefix, "blob_abs_end");
 
 	data_free(strbuf);
@@ -797,11 +807,15 @@ static struct node *unflatten_tree(struct inbuf *dtbuf,
 		}
 	} while (val != FDT_END_NODE);
 
+	if (node->name != flatname) {
+		free(flatname);
+	}
+
 	return node;
 }
 
 
-struct boot_info *dt_from_blob(const char *fname)
+struct dt_info *dt_from_blob(const char *fname)
 {
 	FILE *f;
 	uint32_t magic, totalsize, version, size_dt, boot_cpuid_phys;
@@ -832,7 +846,7 @@ struct boot_info *dt_from_blob(const char *fname)
 	}
 
 	magic = fdt32_to_cpu(magic);
-	if (magic != FDT_MAGIC)
+	if (magic != FDT_MAGIC && magic != FDT_MAGIC_DTBO)
 		die("Blob has incorrect magic number\n");
 
 	rc = fread(&totalsize, sizeof(totalsize), 1, f);
@@ -929,5 +943,5 @@ struct boot_info *dt_from_blob(const char *fname)
 
 	fclose(f);
 
-	return build_boot_info(reservelist, tree, boot_cpuid_phys);
+	return build_dt_info(VF_DT_V1, reservelist, tree, NULL, boot_cpuid_phys);
 }

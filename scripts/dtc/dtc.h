@@ -53,7 +53,14 @@ extern int quiet;		/* Level of quietness */
 extern int reservenum;		/* Number of memory reservation slots */
 extern int minsize;		/* Minimum blob size */
 extern int padsize;		/* Additional padding to blob */
+extern int alignsize;		/* Additional padding to blob accroding to the alignsize */
 extern int phandle_format;	/* Use linux,phandle or phandle properties */
+extern int symbol_fixup_support;/* enable symbols & fixup support */
+extern int auto_label_aliases;	/* auto generate labels -> aliases */
+
+/*
+ * Tree source globals
+ */
 
 #define PHANDLE_LEGACY	0x1
 #define PHANDLE_EPAPR	0x2
@@ -142,6 +149,8 @@ struct property {
 	struct label *labels;
 };
 
+struct dt_info;
+
 struct node {
 	bool deleted;
 	char *name;
@@ -158,6 +167,15 @@ struct node {
 	int addr_cells, size_cells;
 
 	struct label *labels;
+
+	/* only for the root (parent == NULL) */
+	struct dt_info *dti;
+};
+
+struct overlay {
+	char *target;
+	struct node *dt;
+	struct overlay *next;
 };
 
 #define for_each_label_withdel(l0, l) \
@@ -194,6 +212,7 @@ struct node *build_node_delete(void);
 struct node *name_node(struct node *node, char *name);
 struct node *chain_node(struct node *first, struct node *list);
 struct node *merge_nodes(struct node *old_node, struct node *new_node);
+void add_orphan_node(struct node *old_node, struct node *new_node, char *ref);
 
 void add_property(struct node *node, struct property *prop);
 void delete_property_by_name(struct node *node, char *name);
@@ -201,6 +220,12 @@ void delete_property(struct property *prop);
 void add_child(struct node *parent, struct node *child);
 void delete_node_by_name(struct node *parent, char *name);
 void delete_node(struct node *node);
+struct property *append_to_property(struct node *node,
+				    char *name, const void *data, int len);
+
+struct overlay *build_overlay(char *target, struct node *dt);
+struct overlay *chain_overlay(struct overlay *first, struct overlay *list);
+void apply_overlay(struct node *base, struct overlay *overlay);
 
 const char *get_unitname(struct node *node);
 struct property *get_property(struct node *node, const char *propname);
@@ -235,35 +260,54 @@ struct reserve_info *add_reserve_entry(struct reserve_info *list,
 				       struct reserve_info *new);
 
 
-struct boot_info {
+struct dt_info {
+	unsigned int versionflags;
 	struct reserve_info *reservelist;
-	struct node *dt;		/* the device tree */
 	uint32_t boot_cpuid_phys;
+
+	struct node *dt;
+	struct overlay *overlays;
 };
 
-struct boot_info *build_boot_info(struct reserve_info *reservelist,
-				  struct node *tree, uint32_t boot_cpuid_phys);
-void sort_tree(struct boot_info *bi);
+/* version flags definitions */
+#define VF_DT_V1	0x0001	/* /dts-v1/ */
+#define VF_PLUGIN	0x0002	/* /plugin/ */
+
+static inline unsigned int tree_get_versionflags(struct node *dt)
+{
+	if (!dt || !dt->dti)
+		return 0;
+	return dt->dti->versionflags;
+}
+
+struct dt_info *build_dt_info(unsigned int versionflags,
+			      struct reserve_info *reservelist,
+			      struct node *basetree,
+			      struct overlay *overlays,
+			      uint32_t boot_cpuid_phys);
+void sort_tree(struct dt_info *dti);
+void generate_label_tree(struct node *dt, char *gen_node_name, bool allocph);
+void generate_fixups_tree(struct node *dt);
 
 /* Checks */
 
 void parse_checks_option(bool warn, bool error, const char *arg);
-void process_checks(bool force, struct boot_info *bi);
+void process_checks(bool force, struct dt_info *dti);
 
 /* Flattened trees */
 
-void dt_to_blob(FILE *f, struct boot_info *bi, int version);
-void dt_to_asm(FILE *f, struct boot_info *bi, int version);
+void dt_to_blob(FILE *f, struct dt_info *dti, fdt32_t magic, int version);
+void dt_to_asm(FILE *f, struct dt_info *dti, fdt32_t magic, int version);
 
-struct boot_info *dt_from_blob(const char *fname);
+struct dt_info *dt_from_blob(const char *fname);
 
 /* Tree source */
 
-void dt_to_source(FILE *f, struct boot_info *bi);
-struct boot_info *dt_from_source(const char *f);
+void dt_to_source(FILE *f, struct dt_info *dti);
+struct dt_info *dt_from_source(const char *f);
 
 /* FS trees */
 
-struct boot_info *dt_from_fs(const char *dirname);
+struct dt_info *dt_from_fs(const char *dirname);
 
 #endif /* _DTC_H */
