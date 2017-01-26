@@ -98,7 +98,7 @@ script:
 
 deploy:
   on:
-    branch: debian/4.4.13-ntc-mlc
+    branch: nextthing/4.4/chip
   provider: s3
   access_key_id: "${AWS_ACCESS_KEY_ID}"
   secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
