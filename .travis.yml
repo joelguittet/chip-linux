@@ -1,0 +1,109 @@
+language: c
+
+matrix:
+  include:
+  - os: linux
+    dist: trusty
+    sudo: required
+
+addons:
+  apt:
+    packages:
+      - qemu-user-static
+      - git
+      - bc 
+      - device-tree-compiler 
+      - gcc-arm-linux-gnueabihf 
+      - g++-arm-linux-gnueabihf 
+      - lzop 
+      - fakeroot 
+      - libfakeroot 
+      - debhelper 
+      - dkms 
+      - devscripts 
+      - module-assistant
+      - curl
+
+before_script:
+  - curl https://raw.githubusercontent.com/NextThingCo/pocketchip-keypad-patch/master/tca8418.patch | git am
+
+script:
+  - echo KERNEL=====================================================================
+  - export YOUR_FULLNAME="NextThingCo"
+  - export YOUR_EMAIL="software@nextthing.co"
+  - export CONCURRENCY_LEVEL=$(( $(nproc) * 2 ))
+  - export ARCH=arm
+  - export CROSS_COMPILE=arm-linux-gnueabihf-
+  - export KBUILD_DEBARCH=armhf
+  - export KDEB_CHANGELOG_DIST=jessie
+  - export LOCALVERSION=-ntc-mlc
+  - export KDEB_PKGVERSION=$(make kernelversion)-$(echo "$TRAVIS_BUILD_NUMBER + 100" | bc)
+  - export DEBFULLNAME="$YOUR_FULLNAME"
+  - export DEBEMAIL="$YOUR_EMAIL"
+  - git config --global user.email "software@nextthing.co"
+  - git config --global user.name "Next Thing Co."
+  - make multi_v7_defconfig
+  - scripts/config --file .config -d CONFIG_LOGO_LINUX_MONO
+  - scripts/config --file .config -d CONFIG_LOGO_LINUX_VGA16
+  - scripts/config --file .config -d CONFIG_LOGO_LINUX_CLUT224
+  - scripts/config --file .config -d CONFIG_LOGO
+  - make -j${CONCURRENCY_LEVEL} prepare modules_prepare scripts
+  - make -j${CONCURRENCY_LEVEL} deb-pkg
+  - echo REALTEK====================================================================
+  - git clone --branch ja/8723-update https://github.com/nextthingco/RTL8723BS
+  - export LINUX_SRCDIR="$(pwd)"
+  - export RTL8723BS_SRCDIR="$(pwd)/RTL8723BS"
+  - export BUILDDIR=$RTL8723BS_SRCDIR/build
+  - export CONCURRENCY_LEVEL=$(( $(nproc) * 2 ))
+  - export RTL_VER=$(cd $RTL8723BS_SRCDIR; dpkg-parsechangelog --show-field Version)
+  - pushd $RTL8723BS_SRCDIR
+  - dpkg-buildpackage -A -uc -us -nc
+  - sudo dpkg -i ../rtl8723bs-mp-driver-source_${RTL_VER}_all.deb
+  - mkdir -p $BUILDDIR/usr_src
+  - export CC=arm-linux-gnueabihf-gcc
+  - export $(dpkg-architecture -aarmhf)
+  - export CROSS_COMPILE=arm-linux-gnueabihf-
+  - export KERNEL_VER=$(cd $LINUX_SRCDIR; make kernelversion)
+  - cp -a /usr/src/modules/rtl8723bs-mp-driver/* $BUILDDIR
+  - m-a -t -u $BUILDDIR -l $KERNEL_VER -k $LINUX_SRCDIR build rtl8723bs-mp-driver-source
+  - popd
+  - echo MALI========================================================================
+  - git clone https://github.com/nextthingco/chip-mali
+  - export MALI_SRC="$(pwd)/mali/driver/src/devicedrv/mali"
+  - export DEB_OUTPUT="$MALI_SRC/output"
+  - export CC=arm-linux-gnueabihf-gcc
+  - export $(dpkg-architecture -aarmhf)
+  - export CROSS_COMPILE=arm-linux-gnueabihf-
+  - export KERNEL_VER=$(cd $LINUX_SRCDIR; make kernelversion)
+  - export CONCURRENCY_LEVEL=$(( $(nproc) * 2 ))
+  - export ARCH=arm
+  - pushd $MALI_SRC
+  - mkdir -p $DEB_OUTPUT/usr_src
+  - export MALI_VER=$(cd $MALI_SRC; dpkg-parsechangelog --show-field Version)
+  - KDIR="$LINUX_SRCDIR" USING_UMP=0 dpkg-buildpackage -A -uc -us -nc
+  - sudo dpkg -i $MALI_SRC/../chip-mali-source_${MALI_VER}_all.deb
+  - m-a -t -u $DEB_OUTPUT -l $KERNEL_VER -k $LINUX_SRCDIR build chip-mali-source
+  - popd
+  - echo UPLOAD===================================================================
+  - ls ../
+  - ls .
+  - ls $MALI_SRC/output/
+  - ls $RTL8723BS_SRC/build/
+  - mkdir upload/
+  - cp ../*.deb upload/
+  - cp *.deb upload/
+  - ls $RTL8723BS_SRC/build/*.deb upload/
+  - cp $MALI_SRC/output/*.deb upload/
+
+deploy:
+  on:
+    branch: debian/4.4.13-ntc-mlc
+  provider: s3
+  access_key_id: "${AWS_ACCESS_KEY_ID}"
+  secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+  bucket: "opensource.nextthing.co"
+  skip_cleanup: true
+  acl: public_read
+  region: us-west-2
+  local-dir: upload
+  upload-dir: artifacts-travis
