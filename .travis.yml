@@ -90,11 +90,11 @@ script:
   - ls .
   - ls $MALI_SRC/output/
   - ls $RTL8723BS_SRC/build/
-  - mkdir upload/
-  - cp ../*.deb upload/
-  - cp *.deb upload/
-  - ls $RTL8723BS_SRC/build/*.deb upload/
-  - cp $MALI_SRC/output/*.deb upload/
+  - mkdir upload/chip-kernel/${TRAVIS_BUILD_NUMBER}
+  - cp ../*.deb upload/chip-kernel/${TRAVIS_BUILD_NUMBER}/
+  - cp *.deb upload/chip-kernel/${TRAVIS_BUILD_NUMBER}/
+  - cp $RTL8723BS_SRC/build/*.deb upload/chip-kernel/${TRAVIS_BUILD_NUMBER}/
+  - cp $MALI_SRC/output/*.deb upload/chip-kernel/${TRAVIS_BUILD_NUMBER}/
 
 deploy:
   on:
