@@ -25,7 +25,7 @@ addons:
       - curl
 
 before_script:
-  - curl https://raw.githubusercontent.com/NextThingCo/pocketchip-keypad-patch/master/tca8418.patch | git am
+  - curl https://raw.githubusercontent.com/NextThingCo/pocketchip-keypad-patch/master/tca8418.patch | git apply -v
 
 script:
   - echo KERNEL=====================================================================
