@@ -1,0 +1,43 @@
+image: docker:latest
+
+services:
+  - docker:dind
+
+stages:
+  - build
+
+variables:
+  BUILD_CONTAINER_IMAGE: $CI_REGISTRY/kaplan2539/baumeister
+
+before_script:
+  - echo "CI_BUILD_ID=$CI_BUILD_ID"
+  - echo "CI_REGISTRY=$CI_REGISTRY"
+  - echo "CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE"
+  - echo "CI_PROJECT_URL=$CI_PROJECT_URL"
+  - echo "CI_BUILD_REF_NAME=$CI_BUILD_REF_NAME"
+  - echo "BUILD_CONTAINER_IMAGE=$BUILD_CONTAINER_IMAGE"
+
+build:
+  stage: build
+  script:
+    - mkdir -p artifacts/boot/dtbs
+    - mkdir -p artifacts/usr
+    - mkdir -p artifacts/deb
+    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN $CI_REGISTRY
+    - docker pull $BUILD_CONTAINER_IMAGE
+    - docker run --rm -e CI_BUILD_REF_NAME=${CI_BUILD_REF_NAME} -e CI_BUILD_ID=${CI_BUILD_ID} -e SURGE_LOGIN=${SURGE_LOGIN} -e SURGE_TOKEN=${SURGE_TOKEN} -e GPG_SECRET="${GPG_SECRET}" -v $PWD:/build -w /build $BUILD_CONTAINER_IMAGE ./build.sh
+
+    # sync with github in the same stage to avoid checking out the full linux repo twice
+    - apk update
+    - apk add git openssh-client
+    - eval $(ssh-agent -s)
+    - echo $(which ssh-add)
+    - TMPFILE=$(mktemp) && chmod 0600 $TMPFILE && echo "$GITHUB_DEPLOY_KEY" >$TMPFILE && ssh-add $TMPFILE && rm $TMPFILE
+    - mkdir -p ~/.ssh
+    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    - git remote get-url github || git remote add github git@github.com:nextthingco/linux
+    - git push -f github HEAD:refs/heads/$CI_BUILD_REF_NAME
+
+  artifacts:
+    paths:
+      - artifacts/
